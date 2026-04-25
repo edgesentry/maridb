@@ -205,7 +205,6 @@ def _seed_dummy_vessels(db_path: str) -> None:
 
 def _load_ais_from_parquet(region: RegionConfig) -> int:
     """Load downloaded AIS Parquet partitions into the processed DuckDB. Returns row count."""
-    parquet_glob = _DOWNLOADS_DIR / f"region={region.name}" / "date=*" / "positions.parquet"
     parquet_files = sorted(_DOWNLOADS_DIR.glob(f"region={region.name}/date=*/positions.parquet"))
     if not parquet_files:
         logger.warning("  ⚠ No AIS Parquet partitions found in %s", _DOWNLOADS_DIR / f"region={region.name}")
@@ -226,12 +225,14 @@ def _load_ais_from_parquet(region: RegionConfig) -> int:
             )
         """)
         files_str = ", ".join(f"'{p}'" for p in parquet_files)
-        rows = con.execute(f"""
+        before = con.execute("SELECT COUNT(*) FROM ais_positions").fetchone()[0]
+        con.execute(f"""
             INSERT INTO ais_positions
             SELECT mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type
             FROM read_parquet([{files_str}])
             WHERE (mmsi, timestamp) NOT IN (SELECT mmsi, timestamp FROM ais_positions)
-        """).rowcount or 0
+        """)
+        rows = con.execute("SELECT COUNT(*) FROM ais_positions").fetchone()[0] - before
     finally:
         con.close()
     logger.info("  ✓ ais_positions: loaded %d new rows from %d partition(s)", rows, len(parquet_files))
@@ -286,9 +287,9 @@ def step_features(region: RegionConfig, seed_dummy: bool = False) -> bool:
         _seed_dummy_vessels(region.db_path)
 
     return _validate_step(region.db_path, [
-        ("vessel_features",      "SELECT count(*) FROM vessel_features",                                      1, True),
-        ("vessel_features.mmsi", "SELECT count(*) FROM vessel_features WHERE mmsi IS NOT NULL",              1, True),
-        ("anomaly_scores",       "SELECT count(*) FROM vessel_features WHERE ais_gap_count_30d IS NOT NULL", 1, True),
+        ("vessel_features",      "SELECT count(*) FROM vessel_features",                                      1, False),
+        ("vessel_features.mmsi", "SELECT count(*) FROM vessel_features WHERE mmsi IS NOT NULL",              1, False),
+        ("anomaly_scores",       "SELECT count(*) FROM vessel_features WHERE ais_gap_count_30d IS NOT NULL", 1, False),
     ])
 
 

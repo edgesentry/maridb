@@ -1327,7 +1327,10 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
 
     for db_path in candidates:
         stem = db_path.stem
-        region = next((r for r, p in _REGION_PREFIX.items() if p == stem), stem)
+        # Use stem as the canonical region name in R2 paths so push and pull are consistent.
+        # _REGION_PREFIX maps display names (e.g. "japan") to file stems (e.g. "japansea");
+        # the R2 partition key must match the stem so pull-ais-parquet can find the files.
+        region = stem
         print(f"[{region}] Reading {db_path.name} ...")
         try:
             con = _duckdb.connect(str(db_path), read_only=True)
