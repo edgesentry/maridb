@@ -33,41 +33,52 @@ class RegionConfig:
     watchlist_key: str
 
 
+# Resolve DB directory from MARIDB_DATA_DIR (set by LaunchAgents and CI) or default.
+# LaunchAgents write to {MARIDB_DATA_DIR}/{region}.duckdb.
+_DB_DIR = Path(
+    os.getenv("MARIDB_DATA_DIR") or os.getenv("DATA_DIR") or (Path.home() / ".maridb" / "data")
+)
+
+
+def _db(stem: str) -> str:
+    return str(_DB_DIR / f"{stem}.duckdb")
+
+
 REGIONS: dict[str, RegionConfig] = {
     "singapore": RegionConfig(
         name="singapore",
         bbox=[-5, 92, 22, 122],
-        db_path=str(Path.home() / ".maridb" / "data" / "singapore.duckdb"),
+        db_path=_db("singapore"),
         watchlist_key="score/singapore_watchlist.parquet",
     ),
     "japansea": RegionConfig(
         name="japansea",
         bbox=[25, 115, 48, 145],
-        db_path=str(Path.home() / ".maridb" / "data" / "japansea.duckdb"),
+        db_path=_db("japansea"),
         watchlist_key="score/japansea_watchlist.parquet",
     ),
     "japan": RegionConfig(
         name="japansea",
         bbox=[25, 115, 48, 145],
-        db_path=str(Path.home() / ".maridb" / "data" / "japansea.duckdb"),
+        db_path=_db("japansea"),
         watchlist_key="score/japansea_watchlist.parquet",
     ),
     "blacksea": RegionConfig(
         name="blacksea",
         bbox=[40, 27, 47, 42],
-        db_path=str(Path.home() / ".maridb" / "data" / "blacksea.duckdb"),
+        db_path=_db("blacksea"),
         watchlist_key="score/blacksea_watchlist.parquet",
     ),
     "europe": RegionConfig(
         name="europe",
         bbox=[35, -10, 65, 30],
-        db_path=str(Path.home() / ".maridb" / "data" / "europe.duckdb"),
+        db_path=_db("europe"),
         watchlist_key="score/europe_watchlist.parquet",
     ),
     "middleeast": RegionConfig(
         name="middleeast",
         bbox=[10, 32, 32, 62],
-        db_path=str(Path.home() / ".maridb" / "data" / "middleeast.duckdb"),
+        db_path=_db("middleeast"),
         watchlist_key="score/middleeast_watchlist.parquet",
     ),
 }
