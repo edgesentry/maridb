@@ -33,12 +33,25 @@ _REPORT_PATH = Path("data/processed/backtest_public_integration_summary.json")
 _REGRESSION_THRESHOLD = 0.01  # #507: lowered from 0.02 — catches single-step drops like 0.27→0.26
 
 
-def _load_report() -> dict:
+def _load_report() -> tuple[dict, bool]:
+    """Return (report, report_found)."""
     if not _REPORT_PATH.exists():
-        print(f"Report not found: {_REPORT_PATH} — sending pipeline-only metrics email", file=sys.stderr)
-        return {}
+        return {}, False
     with _REPORT_PATH.open() as f:
-        return json.load(f)
+        return json.load(f), True
+
+
+def _format_pipeline_only_body(run_url: str, snapshot_info: str) -> tuple[str, str]:
+    """Return (subject, html_body) for a pipeline run with no backtest report."""
+    subject = "maridb data publish — pipeline completed (no backtest metrics)"
+    html = f"""<html><body>
+<h2>maridb data publish</h2>
+<p>Pipeline completed successfully. No backtest report was available for this run
+(backtest metrics are produced by the separate <em>Public Backtest Integration</em> workflow).</p>
+<p><strong>Snapshot:</strong> {snapshot_info}</p>
+<p><a href="{run_url}">View CI run →</a></p>
+</body></html>"""
+    return subject, html
 
 
 def _format_body(
@@ -153,20 +166,21 @@ def main() -> int:
     snapshot_mb = os.getenv("SNAPSHOT_SIZE_MB", "")
     snapshot_info = f"{snapshot_id} ({snapshot_mb} MB)" if snapshot_id else "see CI run"
 
-    report = _load_report()
+    report, report_found = _load_report()
 
-    # Skip email when all regions were skipped (no real watchlist data in CI).
-    # This happens when watchlists.zip has not been pushed to R2 yet or when
-    # every region falls below --min-watchlist-size (seeded dummy data only).
-    if report.get("total_known_cases", 0) == 0 and not report.get("regions"):
+    if not report_found:
+        # Backtest report not available — send a pipeline-only status email.
+        subject, html_body = _format_pipeline_only_body(run_url, snapshot_info)
+    elif report.get("total_known_cases", 0) == 0 and not report.get("regions"):
+        # Report exists but all regions were skipped (no real watchlist data).
         print(
             "All regions were skipped (total_known_cases=0, evaluated regions=[]).\n"
             "Email suppressed — push real watchlists first:\n"
             "  uv run python scripts/sync_r2.py push-watchlists"
         )
         return 0
-
-    subject, html_body = _format_body(report, prev_p50, run_url, snapshot_info)
+    else:
+        subject, html_body = _format_body(report, prev_p50, run_url, snapshot_info)
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
