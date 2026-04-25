@@ -1,9 +1,12 @@
 .env
 .env.*
+config/launchagents/*.local.plist
 *.parquet
 *.csv
 *.jsonl
 data/
+!data/demo/
+!data/demo/*.csv
 __pycache__/
 *.pyc
 .venv/

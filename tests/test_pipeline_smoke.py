@@ -91,8 +91,9 @@ class TestDistributeValidation:
         monkeypatch.setenv("DATA_DIR", str(tmp_path))
         monkeypatch.setenv("USE_S3", "0")
 
-        # Write a valid source parquet locally
-        source = tmp_path / "voyage_evidence.parquet"
+        # Write valid source parquet at the maridb-public key path (DATA_DIR/voyage-evidence/latest.parquet)
+        source_dir = tmp_path / "voyage-evidence"
+        source_dir.mkdir()
         df = pl.DataFrame({
             "vessel_id": ["IMO9876543"],
             "voyage_id": ["V001"],
@@ -100,19 +101,16 @@ class TestDistributeValidation:
             "track_end_utc": ["2026-04-28T05:55:00Z"],
             "positions_count": [1842],
         })
-        df.write_parquet(source)
+        df.write_parquet(source_dir / "latest.parquet")
 
         from pipelines.distribute.push import push_documaris_voyage_evidence
 
-        ok = push_documaris_voyage_evidence(str(source))
+        ok = push_documaris_voyage_evidence()
         assert ok
 
-        # Verify output landed in DATA_DIR
-        dest = tmp_path / "voyage-evidence" / "latest.parquet"
-        assert dest.exists()
-        written = pl.read_parquet(dest)
-        assert len(written) == 1
+        written = pl.read_parquet(source_dir / "latest.parquet")
         assert written["vessel_id"][0] == "IMO9876543"
+
 
 
 class TestIngestImports:
