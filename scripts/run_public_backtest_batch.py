@@ -38,7 +38,7 @@ _DUMMY_MMSIS: frozenset[str] = frozenset(
 # Watchlists are pulled from R2 to the canonical user data directory.
 # Pipeline operators can override with MARIDB_DATA_DIR or DATA_DIR.
 _watchlist_dir = Path(
-    os.getenv("MARIDB_DATA_DIR") or os.getenv("DATA_DIR") or (Path.home() / ".arktrace" / "data")
+    os.getenv("MARIDB_DATA_DIR") or os.getenv("DATA_DIR") or (Path.home() / ".maridb" / "data")
 )
 
 WATCHLIST_BY_REGION: dict[str, Path] = {
