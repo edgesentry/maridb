@@ -33,11 +33,15 @@ class RegionConfig:
     watchlist_key: str
 
 
+# MARIDB_DATA_DIR is the "processed" data dir (e.g. data/processed in CI,
+# ~/.maridb/data/processed locally). _DB_DIR is the DuckDB working dir under it.
+# _DOWNLOADS_DIR goes up one level to find downloads/ alongside processed/.
 _MARIDB_DATA = Path(
-    os.getenv("MARIDB_DATA_DIR") or os.getenv("DATA_DIR") or (Path.home() / ".maridb" / "data")
+    os.getenv("MARIDB_DATA_DIR") or os.getenv("DATA_DIR")
+    or (Path.home() / ".maridb" / "data" / "processed")
 )
-_DB_DIR = _MARIDB_DATA / "processed" / "ais"
-_DOWNLOADS_DIR = _MARIDB_DATA / "downloads" / "ais"
+_DB_DIR = _MARIDB_DATA / "ais"
+_DOWNLOADS_DIR = _MARIDB_DATA.parent / "downloads" / "ais"
 
 
 def _db(stem: str) -> str:
@@ -290,8 +294,8 @@ def step_features(region: RegionConfig, seed_dummy: bool = False) -> bool:
 
 def step_score(region: RegionConfig) -> bool:
     logger.info("[3/4] Score — anomaly, composite, watchlist")
-    env = {"DB_PATH": region.db_path,
-           "WATCHLIST_OUTPUT_PATH": f"data/processed/{region.watchlist_key}"}
+    watchlist_out = str(_MARIDB_DATA / region.watchlist_key)
+    env = {"DB_PATH": region.db_path, "WATCHLIST_OUTPUT_PATH": watchlist_out}
 
     steps = [
         ([sys.executable, "-m", "pipelines.score.mpol_baseline", "--db", region.db_path], "mpol_baseline"),
@@ -299,7 +303,7 @@ def step_score(region: RegionConfig) -> bool:
         ([sys.executable, "-m", "pipelines.score.composite", "--db", region.db_path], "composite"),
         ([sys.executable, "-m", "pipelines.score.watchlist",
           "--db", region.db_path,
-          "--output", f"data/processed/{region.watchlist_key}"], "watchlist"),
+          "--output", watchlist_out], "watchlist"),
     ]
     for cmd, label in steps:
         result = _run(cmd, env)
@@ -308,7 +312,7 @@ def step_score(region: RegionConfig) -> bool:
             return False
         _ok(label)
 
-    watchlist_path = Path(f"data/processed/{region.watchlist_key}")
+    watchlist_path = Path(watchlist_out)
     if watchlist_path.exists():
         try:
             import polars as pl

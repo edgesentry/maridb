@@ -63,7 +63,8 @@ jobs:
           # without downloading unbounded history on every ephemeral CI runner.
           uv run python scripts/sync_r2.py pull-ais-parquet \
             --regions japansea,blacksea,middleeast,singapore,europe \
-            --days 60 &
+            --days 60 \
+            --data-dir data/downloads &
           PID_AIS=$!
           # Watchlists from previous pipeline run
           uv run python scripts/sync_r2.py pull-watchlists &

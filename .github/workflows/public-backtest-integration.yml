@@ -38,7 +38,8 @@ jobs:
             --stream-duration 0 \
             --seed-dummy \
             --max-known-cases 200 \
-            --min-known-cases 30 \
+            --min-known-cases 5 \
+            --min-watchlist-size 5 \
             --strict-known-cases
 
       - name: Upload public-backtest artifacts

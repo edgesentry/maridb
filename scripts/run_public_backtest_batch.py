@@ -35,30 +35,34 @@ _DUMMY_MMSIS: frozenset[str] = frozenset(
     }
 )
 
-# Watchlists are written by run_pipeline.py to data/processed/score/{region}_watchlist.parquet.
-# In CI, MARIDB_DATA_DIR=data/processed; locally defaults to ~/.maridb/data.
+# MARIDB_DATA_DIR is the processed data dir (e.g. data/processed in CI,
+# ~/.maridb/data/processed locally). Watchlists live under score/ within it.
 _data_dir = Path(
-    os.getenv("MARIDB_DATA_DIR") or os.getenv("DATA_DIR") or (Path.home() / ".maridb" / "data")
+    os.getenv("MARIDB_DATA_DIR") or os.getenv("DATA_DIR")
+    or (Path.home() / ".maridb" / "data" / "processed")
 )
-# run_pipeline.py writes to {data_dir}/score/{region}_watchlist.parquet;
-# pull-watchlists extracts to {data_dir}/{region}_watchlist.parquet (flat).
-# Check score/ first (pipeline output), then top-level (pulled from R2 zip).
-def _watchlist_path(stem: str) -> Path:
+_REGION_STEM: dict[str, str] = {
+    "singapore": "singapore",
+    "japan": "japansea",
+    "middleeast": "middleeast",
+    "europe": "europe",
+    "persiangulf": "persiangulf",
+    "gulfofguinea": "gulfofguinea",
+    "gulfofaden": "gulfofaden",
+    "gulfofmexico": "gulfofmexico",
+    "blacksea": "blacksea",
+}
+
+# Known regions (for validation); paths resolved at runtime via _get_watchlist_path().
+WATCHLIST_BY_REGION: frozenset[str] = frozenset(_REGION_STEM)
+
+
+def _get_watchlist_path(region: str) -> Path:
+    """Resolve watchlist path at runtime so score/ is checked after the pipeline writes it."""
+    stem = _REGION_STEM.get(region, region)
     score_path = _data_dir / "score" / f"{stem}_watchlist.parquet"
     flat_path = _data_dir / f"{stem}_watchlist.parquet"
     return score_path if score_path.exists() else flat_path
-
-WATCHLIST_BY_REGION: dict[str, Path] = {
-    "singapore": _watchlist_path("singapore"),
-    "japan": _watchlist_path("japansea"),
-    "middleeast": _watchlist_path("middleeast"),
-    "europe": _watchlist_path("europe"),
-    "persiangulf": _watchlist_path("persiangulf"),
-    "gulfofguinea": _watchlist_path("gulfofguinea"),
-    "gulfofaden": _watchlist_path("gulfofaden"),
-    "gulfofmexico": _watchlist_path("gulfofmexico"),
-    "blacksea": _watchlist_path("blacksea"),
-}
 
 
 def _run_pipeline_for_region(
@@ -344,7 +348,7 @@ def main() -> None:
     windows: list[dict[str, Any]] = []
     label_counts: dict[str, int] = {}
     for region in regions:
-        watchlist_path = WATCHLIST_BY_REGION[region].resolve()
+        watchlist_path = _get_watchlist_path(region).resolve()
         if not watchlist_path.exists():
             print(
                 f"[error] {region}: watchlist not found at {watchlist_path}\n"
@@ -391,9 +395,9 @@ def main() -> None:
     # a vessel scored in multiple regions is represented once at its best score.
     evaluated_regions = [r for r in regions if r not in skipped_regions]
     watchlist_parts = [
-        pl.read_parquet(WATCHLIST_BY_REGION[r].resolve())
+        pl.read_parquet(_get_watchlist_path(r).resolve())
         for r in evaluated_regions
-        if WATCHLIST_BY_REGION[r].exists()
+        if _get_watchlist_path(r).exists()
     ]
     if watchlist_parts:
         combined_raw = pl.concat(watchlist_parts, how="vertical_relaxed")
