@@ -610,6 +610,8 @@ def compute_composite_scores(
             "cluster_label",
             "baseline_noise_score",
         ]
+    ).with_columns(
+        pl.col("confidence").alias("composite_score")
     ).sort("confidence", descending=True)
 
 
