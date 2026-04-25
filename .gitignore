@@ -5,6 +5,8 @@ config/launchagents/*.local.plist
 *.csv
 *.jsonl
 data/
+!data/demo/
+!data/demo/*.csv
 __pycache__/
 *.pyc
 .venv/

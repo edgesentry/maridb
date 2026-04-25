@@ -113,8 +113,8 @@ Examples
   uv run python scripts/sync_r2.py pull-custom-feeds         # pull feeds from private bucket
   uv run python scripts/sync_r2.py push-ducklake-public      # upload DuckLake catalog to public bucket
   uv run python scripts/sync_r2.py push-ducklake-private     # upload private outputs to private bucket
-  uv run python scripts/sync_r2.py push-ais-parquet              # back up all active AIS .duckdb to private R2
-  uv run python scripts/sync_r2.py push-ais-parquet --regions japansea,blacksea,middleeast
+  uv run python scripts/sync_r2.py push-ais-dbs              # back up all active AIS .duckdb to private R2
+  uv run python scripts/sync_r2.py push-ais-dbs --regions japansea,blacksea,middleeast
   uv run python scripts/sync_r2.py pull-ais-dbs              # restore AIS DBs on a new machine
   uv run python scripts/sync_r2.py list                      # show all generations in R2
 """
@@ -155,7 +155,7 @@ def _resolve_default_data_dir() -> str:
 
     if explicit := _os.getenv("MARIDB_DATA_DIR"):
         return str(Path(explicit).expanduser())
-    return str(Path.home() / ".arktrace" / "data")
+    return str(Path.home() / ".maridb" / "data")
 
 
 _DEFAULT_DATA_DIR = _resolve_default_data_dir()
@@ -191,11 +191,8 @@ _PRIVATE_OUTPUT_FILES = [
 
 # Private bucket for proprietary customer feeds (e.g. Cap Vista MPOL data).
 # Uses separate credentials so it is never confused with the public bucket.
-_PRIVATE_BUCKET = "arktrace-private-capvista"
 # Custom domain for the private bucket — used as the S3 endpoint for CI reads/writes.
 # The domain IS the bucket, so S3 paths are bare keys (no bucket-name prefix).
-_PRIVATE_ENDPOINT = "https://arktrace-private-capvista.edgesentry.io"
-_PRIVATE_FEEDS_DIR = Path(__file__).resolve().parents[1] / "_inputs" / "custom_feeds"
 
 # Files included in the demo bundle — lightweight artifacts that let developers run the
 # dashboard without re-running the full pipeline.  No heavy DuckDB or Lance files.
@@ -549,12 +546,12 @@ def cmd_push(args: argparse.Namespace) -> int:
     all_ts = _list_timestamps(fs, bucket)
     to_delete = all_ts[:-keep] if len(all_ts) > keep else []
     if to_delete:
-        print("\n" + f"Pruning {len(to_delete)} old generation(s) (keeping {keep}):")
+        print(f"\nPruning {len(to_delete)} old generation(s) (keeping {keep}):")
         for old in to_delete:
             n = _delete_timestamp(fs, bucket, old)
             print(f"  deleted {old}.zip" + (" ✓" if n else " (not found)"))
     else:
-        print("\n" + f"{len(all_ts)}/{keep} generation slot(s) used — nothing to prune.")
+        print(f"\n{len(all_ts)}/{keep} generation slot(s) used — nothing to prune.")
 
     print("\nTip: to also push updated GDELT news data, run:")
     print("  uv run python scripts/sync_r2.py push-gdelt")
@@ -869,77 +866,6 @@ def cmd_pull_watchlists(args: argparse.Namespace) -> int:
 
     print(f"Done. {downloaded / 1_048_576:.2f} MB downloaded.")
     return 0
-
-
-def cmd_pull_reviews(args: argparse.Namespace) -> int:
-    """Download server-merged reviews.parquet from R2 into the local DuckDB vessel_reviews table.
-
-    Reads from reviews/merged/reviews.parquet (the server-merged public copy).
-    Conflict resolution: newer ``reviewed_at`` timestamp wins.
-    """
-    import duckdb as _duckdb
-
-    db_path = Path(args.db)
-    bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
-    r2_path = f"{bucket}/{_REVIEWS_MERGED_PREFIX}/reviews.parquet"
-
-    anon = not (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
-    fs = _build_r2_fs(anonymous=anon)
-
-    import pyarrow.fs as pafs
-
-    try:
-        infos = fs.get_file_info([r2_path])
-        if infos[0].type == pafs.FileType.NotFound:
-            raise FileNotFoundError
-        size_kb = infos[0].size / 1024
-    except Exception:
-        print("No merged reviews found in R2 (reviews/merged/reviews.parquet).", file=sys.stderr)
-        return 1
-
-    print(f"Downloading reviews.parquet ({size_kb:.1f} KB) ...")
-    with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp:
-        tmp_path = Path(tmp.name)
-    try:
-        downloaded = _download_file(fs, r2_path, tmp_path)
-
-        # Upsert into local DuckDB: newer reviewed_at wins per mmsi
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        con = _duckdb.connect(str(db_path))
-        try:
-            # Ensure table exists (in case this is a fresh DB)
-            con.execute("""
-                CREATE TABLE IF NOT EXISTS vessel_reviews (
-                    mmsi               VARCHAR NOT NULL,
-                    review_tier        VARCHAR NOT NULL,
-                    handoff_state      VARCHAR NOT NULL DEFAULT 'queued_review',
-                    rationale          TEXT,
-                    evidence_refs_json TEXT,
-                    reviewed_by        VARCHAR,
-                    reviewed_at        TIMESTAMPTZ DEFAULT now()
-                )
-            """)
-            # Load incoming reviews; keep only rows newer than what we already have
-            con.execute(f"""
-                INSERT INTO vessel_reviews
-                SELECT src.*
-                FROM read_parquet('{tmp_path}') AS src
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM vessel_reviews dst
-                    WHERE dst.mmsi = src.mmsi
-                      AND dst.reviewed_at >= src.reviewed_at
-                )
-            """)
-            merged = con.execute("SELECT COUNT(*) FROM vessel_reviews").fetchone()[0]
-        finally:
-            con.close()
-    finally:
-        tmp_path.unlink(missing_ok=True)
-
-    print(f"Done. {downloaded / 1024:.1f} KB downloaded. vessel_reviews now has {merged} rows.")
-    return 0
-
-
 def cmd_push_demo(args: argparse.Namespace) -> int:
     """Upload the fixed-key demo bundle to R2 (requires credentials).
 
@@ -1031,112 +957,6 @@ def cmd_pull_demo(args: argparse.Namespace) -> int:
     print(f"Done. {size_mb:.2f} MB downloaded.")
     print("\nData synced. Open the dashboard:\n  https://arktrace.edgesentry.io")
     return 0
-
-
-def cmd_push_custom_feeds(args: argparse.Namespace) -> int:
-    """Upload files from _inputs/custom_feeds/ to the private arktrace-private-capvista bucket.
-
-    Uses the standard AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY credentials — the same
-    key that writes to arktrace-public must also have write access on arktrace-private-capvista.
-
-    Only uploads files whose names do NOT end with ``_sample`` (sample fixtures are
-    local smoke-test data only and must never be pushed to the private bucket).
-    """
-    feeds_dir = Path(args.feeds_dir)
-
-    if not feeds_dir.exists():
-        print(f"Error: feeds directory does not exist: {feeds_dir}", file=sys.stderr)
-        return 1
-
-    _SKIP = {".gitkeep", ".gitignore"}
-    candidates = sorted(
-        f
-        for f in feeds_dir.iterdir()
-        if f.is_file() and f.name not in _SKIP and not f.stem.endswith("_sample")
-    )
-    if not candidates:
-        print(
-            f"No uploadable feed files found in {feeds_dir}. "
-            "Add CSVs (without _sample suffix) and retry.",
-            file=sys.stderr,
-        )
-        return 1
-
-    # S3 API operations use the account-level R2 endpoint with an explicit bucket
-    # prefix — pyarrow's S3FileSystem does not support custom domains as endpoints.
-    # _PRIVATE_ENDPOINT is the public-facing URL; S3 writes go through _DEFAULT_ENDPOINT.
-    fs = _build_r2_fs()
-    print(f"Uploading {len(candidates)} file(s) to {_PRIVATE_BUCKET}/")
-    for local_path in candidates:
-        r2_path = f"{_PRIVATE_BUCKET}/{local_path.name}"
-        size_kb = local_path.stat().st_size / 1024
-        print(f"  {local_path.name} ({size_kb:.1f} KB) → {r2_path} ...", end="", flush=True)
-        _upload_file(fs, local_path, r2_path)
-        print(" ✓")
-
-    print(f"\nDone. Custom feeds uploaded to {_PRIVATE_BUCKET}/")
-    print("Pull them in CI with: uv run python scripts/sync_r2.py pull-custom-feeds")
-    return 0
-
-
-def cmd_pull_custom_feeds(args: argparse.Namespace) -> int:
-    """Download all feed files from the private arktrace-private-capvista bucket.
-
-    Extracts files into ``_inputs/custom_feeds/`` so the pipeline's auto-detection
-    step picks them up on the next run.
-
-    Uses the standard AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY credentials — the
-    same key that accesses maridb-public.  Skips gracefully when credentials are
-    absent (forks without repo secrets, local dev machines without .env).
-    """
-    if not (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")):
-        print(
-            "[skip] AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY not set — skipping pull-custom-feeds",
-            file=sys.stderr,
-        )
-        return 0
-
-    import pyarrow.fs as pafs
-
-    feeds_dir = Path(args.feeds_dir)
-    feeds_dir.mkdir(parents=True, exist_ok=True)
-
-    # S3 API operations use the account-level R2 endpoint with an explicit bucket
-    # prefix — pyarrow's S3FileSystem does not support custom domains as endpoints
-    # (FileSelector("") triggers ListBuckets which R2 custom domains reject).
-    # _PRIVATE_ENDPOINT is the public-facing URL; S3 reads go through _DEFAULT_ENDPOINT.
-    fs = _build_r2_fs()
-
-    selector = pafs.FileSelector(f"{_PRIVATE_BUCKET}/", recursive=True)
-    try:
-        infos = fs.get_file_info(selector)
-    except Exception as exc:
-        print(f"Error listing {_PRIVATE_BUCKET}: {exc}", file=sys.stderr)
-        return 1
-
-    files = [i for i in infos if i.type == pafs.FileType.File]
-    if not files:
-        print(f"No files found in {_PRIVATE_BUCKET}/ — nothing to download.")
-        return 0
-
-    print(f"Downloading {len(files)} file(s) from {_PRIVATE_BUCKET}/ → {feeds_dir}/")
-    for info in files:
-        rel = info.path.removeprefix(f"{_PRIVATE_BUCKET}/")
-        local_path = feeds_dir / rel
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        size_kb = info.size / 1024
-        print(f"  {rel} ({size_kb:.1f} KB) ...", end="", flush=True)
-        try:
-            _download_file(fs, info.path, local_path)
-            print(" ✓")
-        except Exception as exc:
-            print(f" ERROR: {exc}", file=sys.stderr)
-
-    print(f"\nDone. Custom feeds extracted to {feeds_dir}/")
-    print("The pipeline will auto-detect and ingest these files on the next run.")
-    return 0
-
-
 def cmd_push_ducklake_public(args: argparse.Namespace) -> int:
     """Upload DuckLake catalog.duckdb + data/ Parquet files to maridb-public/.
 
@@ -1202,103 +1022,6 @@ def cmd_push_ducklake_public(args: argparse.Namespace) -> int:
         f"  {_PUBLIC_BASE_URL}/{_DUCKLAKE_DATA_PREFIX}..."
     )
     return 0
-
-
-def cmd_push_ducklake_private(args: argparse.Namespace) -> int:
-    """Upload DuckLake catalog + private pipeline outputs to arktrace-private-capvista/outputs/.
-
-    Objects written:
-      arktrace-private-capvista/outputs/catalog.duckdb
-      arktrace-private-capvista/outputs/data/main/<table>/*.parquet
-      arktrace-private-capvista/outputs/candidate_watchlist.parquet
-      arktrace-private-capvista/outputs/causal_effects.parquet
-      arktrace-private-capvista/outputs/validation_metrics.json
-
-    Requires AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY with write access on the
-    private bucket.  Authenticated Cap Vista reviewers can download these files
-    after logging in via Cloudflare Access (#313).
-    """
-    catalog_dir = Path(args.catalog_dir)
-    data_dir = Path(args.data_dir)
-    catalog_file = catalog_dir / "catalog.duckdb"
-    parquet_dir = catalog_dir / "data"
-
-    if not catalog_file.exists():
-        print(
-            f"Error: {catalog_file} not found.  Run checkpoint_ducklake.py first:\n"
-            "  uv run python scripts/checkpoint_ducklake.py",
-            file=sys.stderr,
-        )
-        return 1
-
-    fs = _build_r2_fs()
-    prefix = f"{_PRIVATE_BUCKET}/{_DUCKLAKE_PRIVATE_PREFIX}"
-
-    # Upload DuckLake catalog
-    catalog_r2 = f"{prefix}{_DUCKLAKE_CATALOG_KEY}"
-    sz = catalog_file.stat().st_size
-    print(f"Uploading catalog.duckdb ({sz / 1024:.1f} KB) → {catalog_r2} ...")
-    _upload_file(fs, catalog_file, catalog_r2)
-    print("  ✓")
-
-    # Upload Parquet files from ducklake/data/
-    parquets = sorted(parquet_dir.rglob("*.parquet")) if parquet_dir.exists() else []
-    if parquets:
-        total_bytes = 0
-        for p in parquets:
-            rel = p.relative_to(catalog_dir)
-            r2_path = f"{prefix}{rel}"
-            sz = p.stat().st_size
-            total_bytes += sz
-            print(f"  {rel}  ({sz / 1024:.1f} KB) → {r2_path} ...")
-            _upload_file(fs, p, r2_path)
-        print(f"Uploaded {len(parquets)} Parquet file(s) ({total_bytes / 1_048_576:.2f} MB)  ✓")
-
-    # Upload additional private output files (watchlist, causal effects, metrics)
-    for filename in _PRIVATE_OUTPUT_FILES:
-        local = data_dir / filename
-        if not local.exists():
-            print(f"  [skip] {filename} not found in {data_dir}")
-            continue
-        r2_path = f"{prefix}{filename}"
-        sz = local.stat().st_size
-        print(f"  {filename} ({sz / 1024:.1f} KB) → {r2_path} ...")
-        _upload_file(fs, local, r2_path)
-        print("  ✓")
-
-    # Generate and upload private ducklake_manifest.json — rewrites the public
-    # manifest URLs to point at the private bucket so the browser OPFS sync can
-    # discover private files when the user is authenticated.
-    public_manifest_file = catalog_dir / "ducklake_manifest.json"
-    if public_manifest_file.exists():
-        import json as _json
-
-        private_base = f"{_PRIVATE_ENDPOINT}/{_DUCKLAKE_PRIVATE_PREFIX.rstrip('/')}"
-        public_base = "https://maridb-public.edgesentry.io"
-        manifest_data = _json.loads(public_manifest_file.read_text())
-        for entry in manifest_data.get("files", []):
-            entry["url"] = entry["url"].replace(public_base, private_base)
-            entry["key"] = f"{_DUCKLAKE_PRIVATE_PREFIX}{entry['key']}"
-        manifest_data["base_url"] = private_base
-        private_manifest_bytes = _json.dumps(manifest_data, indent=2).encode()
-        manifest_r2 = f"{prefix}ducklake_manifest.json"
-        print(
-            f"Uploading private ducklake_manifest.json ({len(private_manifest_bytes)} B) → {manifest_r2} ..."
-        )
-        with fs.open_output_stream(manifest_r2) as dst:
-            dst.write(private_manifest_bytes)
-        print("  ✓")
-    else:
-        print("[warn] ducklake_manifest.json not found — private browser OPFS sync will not work.")
-
-    print(
-        f"\nDone. Private DuckLake outputs available at:\n"
-        f"  {_PRIVATE_ENDPOINT}/{_DUCKLAKE_PRIVATE_PREFIX}  (authenticated access only)\n"
-        f"  Manifest: {_PRIVATE_ENDPOINT}/{_DUCKLAKE_PRIVATE_PREFIX}ducklake_manifest.json"
-    )
-    return 0
-
-
 _AIS_DBS_R2_PREFIX = "ais-dbs/"  # private bucket sub-prefix for raw AIS DB backups
 _GFW_EO_R2_PREFIX = "gfw-eo/"  # private bucket sub-prefix for pre-fetched GFW EO parquets
 _GEBCO_MASKS_R2_PREFIX = "gebco-masks/"  # private bucket sub-prefix for GEBCO depth masks
@@ -1560,7 +1283,7 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
         stem = db_path.stem
         region = next((r for r, p in _REGION_PREFIX.items() if p == stem), stem)
 
-        print("\n" + f"[{region}] Reading {db_path.name} ...")
+        print(f"\n[{region}] Reading {db_path.name} ...")
         try:
             src = _duckdb.connect(str(db_path), read_only=True)
         except Exception as exc:
@@ -1691,15 +1414,11 @@ def cmd_pull_ais_parquet(args: argparse.Namespace) -> int:
 
     print(f"\nDone. {total} file(s) downloaded to {data_dir}/ducklake/")
     return 0
-
-
 def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
     """Export new ais_positions rows to date-partitioned Parquet and upload to maridb-public.
 
-    For each region DB, exports rows not yet in R2 as:
-      maridb-public/ais/region=<region>/date=YYYY-MM-DD/positions.parquet
-
-    Incremental: checks which date partitions already exist in R2 and skips them.
+    Incremental by date: only uploads date partitions not already in R2.
+    Layout: maridb-public/ais/region=<region>/date=YYYY-MM-DD/positions.parquet
     The local .duckdb remains as the source of truth and is never deleted.
     """
     import duckdb as _duckdb
@@ -1722,19 +1441,16 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
     for db_path in candidates:
         stem = db_path.stem
         region = next((r for r, p in _REGION_PREFIX.items() if p == stem), stem)
-
-        print(f"\n[{region}] Reading {db_path.name} ...")
+        print(f"[{region}] Reading {db_path.name} ...")
         try:
             con = _duckdb.connect(str(db_path), read_only=True)
             row_count = con.execute("SELECT COUNT(*) FROM ais_positions").fetchone()[0]
         except Exception as exc:
             print(f"  [skip] cannot open DB: {exc}", file=sys.stderr)
             continue
-
         if row_count == 0:
             print("  [skip] ais_positions is empty")
             continue
-
         dates = [
             r[0].strftime("%Y-%m-%d")
             for r in con.execute(
@@ -1742,7 +1458,6 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
             ).fetchall()
         ]
         print(f"  {row_count:,} rows across {len(dates)} date(s)")
-
         r2_prefix = f"{bucket}/ais/region={region}/"
         existing: set[str] = set()
         try:
@@ -1752,13 +1467,11 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
                         existing.add(part.removeprefix("date="))
         except Exception:
             pass
-
         to_upload = [d for d in dates if d not in existing]
         if not to_upload:
-            print(f"  all {len(dates)} date(s) already in R2 -- skipping")
+            print(f"  all {len(dates)} date(s) already in R2 - skipping")
             con.close()
             continue
-
         print(f"  uploading {len(to_upload)} new date(s) ({len(existing)} already in R2) ...")
         for date_str in to_upload:
             table = con.execute(
@@ -1773,10 +1486,8 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
                 total_uploaded += 1
             except Exception as exc:
                 print(f"    [error] {date_str}: {exc}", file=sys.stderr)
-
         con.close()
-
-    print(f"\nDone. {total_uploaded} partition(s) uploaded to {bucket}/ais/")
+    print(f"Done. {total_uploaded} partition(s) uploaded to {bucket}/ais/")
     return 0
 
 
@@ -1784,12 +1495,8 @@ def cmd_pull_ais_parquet(args: argparse.Namespace) -> int:
     """Download AIS date-partitioned Parquet from maridb-public/ais/ to local data dir.
 
     Downloads only the last --days days (default 60). Skips partitions already
-    present locally. Layout on disk:
-      <data-dir>/ais/region=<region>/date=YYYY-MM-DD/positions.parquet
-
-    Consumers read with polars or DuckDB:
-      pl.read_parquet("data/processed/ais/region=singapore/**/*.parquet")
-      duckdb.read_parquet("data/processed/ais/**/*.parquet")
+    present locally by size check.
+    Layout: <data-dir>/ais/region=<region>/date=YYYY-MM-DD/positions.parquet
     """
     import pyarrow.fs as pafs
     import pyarrow.parquet as pq
@@ -1801,16 +1508,13 @@ def cmd_pull_ais_parquet(args: argparse.Namespace) -> int:
         {r.strip() for r in args.regions.split(",")} if args.regions else None
     )
     cutoff = (date.today() - timedelta(days=args.days)).isoformat()
-
     fs = _build_r2_fs()
     total = 0
-
     try:
         all_files = fs.get_file_info(pafs.FileSelector(f"{bucket}/ais/", recursive=True))
     except Exception as exc:
         print(f"Error listing {bucket}/ais/: {exc}", file=sys.stderr)
         return 1
-
     for info in all_files:
         if not info.path.endswith(".parquet"):
             continue
@@ -1819,21 +1523,17 @@ def cmd_pull_ais_parquet(args: argparse.Namespace) -> int:
         date_part = next((p for p in parts if p.startswith("date=")), None)
         if not region_part or not date_part:
             continue
-
         region = region_part.removeprefix("region=")
         date_str = date_part.removeprefix("date=")
-
         if regions_filter and region not in regions_filter:
             continue
         if date_str < cutoff:
             continue
-
         local_path = (
             data_dir / "ais" / f"region={region}" / f"date={date_str}" / "positions.parquet"
         )
         if local_path.exists() and local_path.stat().st_size == info.size:
             continue
-
         local_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             table = pq.read_table(info.path, filesystem=fs)
@@ -1842,157 +1542,7 @@ def cmd_pull_ais_parquet(args: argparse.Namespace) -> int:
             total += 1
         except Exception as exc:
             print(f"  [error] {region}/{date_str}: {exc}", file=sys.stderr)
-
-    print(f"\nDone. {total} partition(s) downloaded to {data_dir}/ais/")
-    return 0
-
-
-def cmd_push_ais_dbs(args: argparse.Namespace) -> int:
-    """Upload regional AIS .duckdb files to the private R2 bucket for backup.
-
-    Each file is uploaded as:
-      arktrace-private-capvista/ais-dbs/<filename>.duckdb
-
-    Existing objects are overwritten (no rotation — the stream collector is the
-    source of truth and files grow continuously).
-    """
-    data_dir = Path(args.data_dir)
-    regions: list[str] | None = (
-        [r.strip() for r in args.regions.split(",")] if args.regions else None
-    )
-
-    candidates = _ais_db_candidates(data_dir, regions)
-    if not candidates:
-        print(
-            "No eligible AIS .duckdb files found. "
-            "Check --data-dir and --regions, or that files are > 1 MB.",
-            file=sys.stderr,
-        )
-        return 1
-
-    # Validate each candidate DB before uploading: must be openable and have
-    # an ais_positions table with at least one row.
-    import duckdb as _duckdb
-
-    valid_candidates = []
-    for local_path in candidates:
-        try:
-            con = _duckdb.connect(str(local_path), read_only=True)
-            row_count = con.execute("SELECT COUNT(*) FROM ais_positions").fetchone()[0]
-            con.close()
-            if row_count == 0:
-                print(f"  [skip] {local_path.name} — ais_positions table is empty")
-                continue
-            if args.min_rows and row_count < args.min_rows:
-                print(
-                    f"  [skip] {local_path.name} — {row_count:,} rows "
-                    f"< --min-rows={args.min_rows:,} (likely CI-only pipeline output)"
-                )
-                continue
-            valid_candidates.append((local_path, row_count))
-        except Exception as exc:
-            print(f"  [skip] {local_path.name} — validation failed: {exc}", file=sys.stderr)
-
-    if not valid_candidates:
-        print("No valid AIS DBs to upload after validation.", file=sys.stderr)
-        return 1
-
-    import pyarrow.fs as pafs
-
-    fs = _build_r2_fs()
-    print(f"Uploading {len(valid_candidates)} AIS DB(s) to {_PRIVATE_BUCKET}/{_AIS_DBS_R2_PREFIX}")
-    for local_path, row_count in valid_candidates:
-        r2_path = f"{_PRIVATE_BUCKET}/{_AIS_DBS_R2_PREFIX}{local_path.name}"
-        size_mb = local_path.stat().st_size / 1_048_576
-        print(
-            f"  {local_path.name} ({size_mb:.1f} MB, {row_count:,} rows) → {r2_path} ...",
-            end="",
-            flush=True,
-        )
-
-        # Check remote LastModified — skip if local file is older (unless --force)
-        if not args.force:
-            try:
-                info = fs.get_file_info([r2_path])[0]
-                if info.type == pafs.FileType.File:
-                    local_mtime = local_path.stat().st_mtime
-                    remote_mtime = info.mtime.timestamp() if info.mtime else 0
-                    if local_mtime <= remote_mtime:
-                        print(" (skipped — remote is newer or same; use --force to overwrite)")
-                        continue
-            except Exception:
-                pass  # object doesn't exist yet — proceed with upload
-
-        _upload_file(fs, local_path, r2_path)
-        print(f" ✓ ({size_mb:.1f} MB, {row_count:,} rows)")
-
-    print(f"\nDone. AIS DBs backed up to {_PRIVATE_BUCKET}/{_AIS_DBS_R2_PREFIX}")
-    print("Restore on another machine with: uv run python scripts/sync_r2.py pull-ais-dbs")
-    return 0
-
-
-def cmd_pull_ais_dbs(args: argparse.Namespace) -> int:
-    """Download regional AIS .duckdb files from the private R2 bucket.
-
-    Only downloads a file if the remote copy is newer than the local file
-    (by LastModified timestamp), unless --force is set.
-    """
-    if not (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")):
-        print(
-            "Error: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY not set — "
-            "pull-ais-dbs requires private bucket credentials.",
-            file=sys.stderr,
-        )
-        return 1
-
-    import pyarrow.fs as pafs
-
-    data_dir = Path(args.data_dir)
-    data_dir.mkdir(parents=True, exist_ok=True)
-    regions: list[str] | None = (
-        [r.strip() for r in args.regions.split(",")] if args.regions else None
-    )
-
-    fs = _build_r2_fs()
-    prefix = f"{_PRIVATE_BUCKET}/{_AIS_DBS_R2_PREFIX}"
-    selector = pafs.FileSelector(prefix, recursive=False)
-    try:
-        infos = fs.get_file_info(selector)
-    except Exception as exc:
-        print(f"Error listing {prefix}: {exc}", file=sys.stderr)
-        return 1
-
-    db_files = [i for i in infos if i.type == pafs.FileType.File and i.path.endswith(".duckdb")]
-    if not db_files:
-        print(f"No .duckdb files found at {prefix} — nothing to download.")
-        return 0
-
-    # Filter by requested regions if specified
-    if regions:
-        stems = {_REGION_PREFIX.get(r, r) for r in regions}
-        db_files = [i for i in db_files if Path(i.path).stem in stems]
-        if not db_files:
-            print(f"No matching files for regions: {regions}", file=sys.stderr)
-            return 1
-
-    print(f"Found {len(db_files)} AIS DB(s) in {_PRIVATE_BUCKET}/{_AIS_DBS_R2_PREFIX}")
-    for info in db_files:
-        filename = Path(info.path).name
-        local_path = data_dir / filename
-        size_mb = info.size / 1_048_576
-        print(f"  {filename} ({size_mb:.1f} MB) ...", end="", flush=True)
-
-        if not args.force and local_path.exists():
-            local_mtime = local_path.stat().st_mtime
-            remote_mtime = info.mtime.timestamp() if info.mtime else 0
-            if local_mtime >= remote_mtime:
-                print(" (skipped — local is same age or newer; use --force to overwrite)")
-                continue
-
-        _download_file(fs, info.path, local_path)
-        print(f" ✓ ({size_mb:.1f} MB)")
-
-    print(f"\nDone. AIS DBs restored to {data_dir}/")
+    print(f"Done. {total} partition(s) downloaded to {data_dir}/ais/")
     return 0
 
 
@@ -2064,320 +1614,83 @@ def main() -> int:
 
     push_p = sub.add_parser("push", help="Push new generation zip to R2, prune old zips")
     push_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-    push_p.add_argument(
-        "--keep",
-        type=int,
-        default=_DEFAULT_KEEP,
-        metavar="N",
-        help=f"Number of generations to keep in R2 (default: {_DEFAULT_KEEP})",
-    )
+    push_p.add_argument("--keep", type=int, default=_DEFAULT_KEEP, metavar="N")
+    push_p.add_argument("--force", action="store_true")
 
-    pull_p = sub.add_parser(
-        "pull", help="Download + extract latest (or named) generation zip → data/processed/"
-    )
+    pull_p = sub.add_parser("pull", help="Download + extract latest (or named) snapshot zip")
     pull_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-    pull_p.add_argument(
-        "--timestamp",
-        default=None,
-        metavar="YYYYMMDDTHHMMSSZ",
-        help="Specific generation to pull (default: latest)",
+    pull_p.add_argument("--timestamp", default=None, metavar="TIMESTAMP")
+    pull_p.add_argument("--force", action="store_true")
+
+    push_ais_p = sub.add_parser(
+        "push-ais-parquet",
+        help="Export ais_positions to date-partitioned Parquet and upload to maridb-public/ais/",
     )
-    pull_p.add_argument(
-        "--region",
-        default=_DEFAULT_REGION,
-        metavar="REGION",
-        help=(
-            f"Region(s) to extract: {', '.join(_REGION_PREFIX)} or 'all' "
-            f"(default: {_DEFAULT_REGION}, comma-separate for multiple)"
-        ),
+    push_ais_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+    push_ais_p.add_argument(
+        "--regions", default=None, metavar="REGIONS",
+        help=f"Comma-separated region names (default: all). Known: {', '.join(_REGION_PREFIX)}",
     )
 
-    push_gdelt_p = sub.add_parser(
-        "push-gdelt", help="Upload gdelt.lance as gdelt.lance.zip (run after re-ingesting GDELT)"
+    pull_ais_p = sub.add_parser(
+        "pull-ais-parquet",
+        help="Download AIS date-partitioned Parquet from maridb-public/ais/ to local dir",
     )
-    push_gdelt_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-    push_gdelt_p.add_argument(
-        "--force",
-        action="store_true",
-        help="Re-upload even if gdelt.lance.zip already exists in R2",
-    )
+    pull_ais_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+    pull_ais_p.add_argument("--regions", default=None, metavar="REGIONS")
+    pull_ais_p.add_argument("--days", type=int, default=60, metavar="N",
+                             help="Download only partitions from the last N days (default: 60)")
 
-    pull_gdelt_p = sub.add_parser(
-        "pull-gdelt", help="Download + extract gdelt.lance.zip → data/processed/gdelt.lance"
-    )
-    pull_gdelt_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+    gdelt_push_p = sub.add_parser("push-gdelt", help="Upload gdelt.lance as gdelt.lance.zip")
+    gdelt_push_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+    gdelt_pull_p = sub.add_parser("pull-gdelt", help="Download gdelt.lance.zip and extract")
+    gdelt_pull_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
-    push_sanctions_p = sub.add_parser(
-        "push-sanctions-db",
-        help="Upload public_eval.duckdb (OpenSanctions DB) to R2 — run after prepare_public_sanctions_db.py",
-    )
-    push_sanctions_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-    push_sanctions_p.add_argument(
-        "--force",
-        action="store_true",
-        help="Re-upload even if public_eval.duckdb already exists in R2",
-    )
+    push_sd_p = sub.add_parser("push-sanctions-db", help="Upload public_eval.duckdb to R2")
+    push_sd_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+    push_sd_p.add_argument("--force", action="store_true")
+    pull_sd_p = sub.add_parser("pull-sanctions-db", help="Download public_eval.duckdb from R2")
+    pull_sd_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
-    pull_sanctions_p = sub.add_parser(
-        "pull-sanctions-db",
-        help="Download public_eval.duckdb from R2 — required to run test_public_data_backtest_integration.py",
-    )
-    pull_sanctions_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+    push_wl_p = sub.add_parser("push-watchlists",
+                                help="Upload *_watchlist.parquet files as watchlists.zip")
+    push_wl_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+    push_wl_p.add_argument("--force", action="store_true")
+    pull_wl_p = sub.add_parser("pull-watchlists",
+                                help="Download watchlists.zip and extract")
+    pull_wl_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
-    push_watchlists_p = sub.add_parser(
-        "push-watchlists",
-        help=(
-            "Upload *_watchlist.parquet files as watchlists.zip — run after a real pipeline "
-            "run to make watchlists available to CI via pull-watchlists"
-        ),
-    )
-    push_watchlists_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-
-    pull_watchlists_p = sub.add_parser(
-        "pull-watchlists",
-        help="Download watchlists.zip from R2 and extract into data/processed/ — used by CI",
-    )
-    pull_watchlists_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-
-    push_demo_p = sub.add_parser(
-        "push-demo",
-        help=(
-            "Upload fixed-key demo bundle (watchlist + scores + causal effects + metrics) "
-            "to R2 — requires credentials; run after a pipeline run or from CI"
-        ),
-    )
+    push_demo_p = sub.add_parser("push-demo", help="Upload demo bundle to R2")
     push_demo_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-
-    pull_demo_p = sub.add_parser(
-        "pull-demo",
-        help=(
-            "Download demo bundle from R2 into data/processed/ — no credentials required; "
-            "lets developers run the dashboard without a local pipeline run"
-        ),
-    )
+    push_demo_p.add_argument("--force", action="store_true")
+    pull_demo_p = sub.add_parser("pull-demo",
+                                  help="Download demo bundle from R2 (no credentials needed)")
     pull_demo_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
-    pull_reviews_p = sub.add_parser(
-        "pull-reviews",
-        help="Download reviews.parquet from R2 and upsert into local DuckDB vessel_reviews table",
-    )
-    pull_reviews_p.add_argument(
-        "--db", default=_DEFAULT_DATA_DIR + "/singapore.duckdb", metavar="DB"
-    )
+    push_dl_p = sub.add_parser("push-ducklake-public",
+                                help="Upload DuckLake catalog + Parquet to maridb-public/")
+    push_dl_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
-    _default_feeds_dir = str(_PRIVATE_FEEDS_DIR)
-
-    push_custom_feeds_p = sub.add_parser(
-        "push-custom-feeds",
-        help=(
-            "Upload non-sample feed files from _inputs/custom_feeds/ to the private "
-            "arktrace-private-capvista R2 bucket (requires AWS_ACCESS_KEY_ID / "
-            "AWS_SECRET_ACCESS_KEY with write access on both buckets)"
-        ),
-    )
-    push_custom_feeds_p.add_argument(
-        "--bucket",
-        default=_PRIVATE_BUCKET,
-        metavar="BUCKET",
-        help=f"Private R2 bucket name (default: {_PRIVATE_BUCKET})",
-    )
-    push_custom_feeds_p.add_argument(
-        "--feeds-dir",
-        default=_default_feeds_dir,
-        metavar="DIR",
-        help=f"Local directory containing feed files to upload (default: {_default_feeds_dir})",
-    )
-
-    pull_custom_feeds_p = sub.add_parser(
-        "pull-custom-feeds",
-        help=(
-            "Download feed files from the private arktrace-private-capvista R2 bucket into "
-            "_inputs/custom_feeds/ — skips gracefully when credentials are absent"
-        ),
-    )
-    pull_custom_feeds_p.add_argument(
-        "--bucket",
-        default=_PRIVATE_BUCKET,
-        metavar="BUCKET",
-        help=f"Private R2 bucket name (default: {_PRIVATE_BUCKET})",
-    )
-    pull_custom_feeds_p.add_argument(
-        "--feeds-dir",
-        default=_default_feeds_dir,
-        metavar="DIR",
-        help=f"Local directory to extract feeds into (default: {_default_feeds_dir})",
-    )
-
-    _default_ducklake_catalog_dir = str(Path(_DEFAULT_DATA_DIR) / "ducklake")
-
-    push_ducklake_public_p = sub.add_parser(
-        "push-ducklake-public",
-        help=(
-            "Upload DuckLake catalog.duckdb + data/ Parquet files to maridb-public/ "
-            "(run checkpoint_ducklake.py first)"
-        ),
-    )
-    push_ducklake_public_p.add_argument(
-        "--catalog-dir",
-        default=_default_ducklake_catalog_dir,
-        metavar="DIR",
-        help=(
-            "Directory containing catalog.duckdb and data/ "
-            f"(default: {_default_ducklake_catalog_dir})"
-        ),
-    )
-
-    push_ducklake_private_p = sub.add_parser(
-        "push-ducklake-private",
-        help=(
-            "Upload DuckLake catalog + private output files to "
-            "arktrace-private-capvista/outputs/ (requires credentials)"
-        ),
-    )
-    push_ducklake_private_p.add_argument(
-        "--catalog-dir",
-        default=_default_ducklake_catalog_dir,
-        metavar="DIR",
-        help=(
-            "Directory containing catalog.duckdb and data/ "
-            f"(default: {_default_ducklake_catalog_dir})"
-        ),
-    )
-    push_ducklake_private_p.add_argument(
-        "--data-dir",
-        default=_DEFAULT_DATA_DIR,
-        metavar="DIR",
-        help=(
-            "Pipeline data directory for additional private output files "
-            f"(default: {_DEFAULT_DATA_DIR})"
-        ),
-    )
-
-    push_ais_parquet_p = sub.add_parser(
-        "push-ais-parquet",
-        help=(
-            "Export ais_positions from local .duckdb to date-partitioned Parquet and upload to "
-            "maridb-public/ais/region=<region>/date=YYYY-MM-DD/ (incremental)"
-        ),
-    )
-    push_ais_parquet_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-    push_ais_parquet_p.add_argument(
-        "--regions", default=None, metavar="REGIONS",
-        help=f"Comma-separated region names (default: all eligible DBs). Known: {', '.join(_REGION_PREFIX)}"
-    )
-
-    pull_ais_parquet_p = sub.add_parser(
-        "pull-ais-parquet",
-        help="Download AIS date-partitioned Parquet from maridb-public/ais/ to local data dir",
-    )
-    pull_ais_parquet_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-    pull_ais_parquet_p.add_argument("--regions", default=None, metavar="REGIONS")
-    pull_ais_parquet_p.add_argument(
-        "--days", type=int, default=60, metavar="N",
-        help="Download only partitions from the last N days (default: 60)"
-    )
-
-
-    push_ais_dbs_p = sub.add_parser(
-        "push-ais-dbs",
-        help=(
-            "Upload regional AIS .duckdb files to arktrace-private-capvista/ais-dbs/ "
-            "(requires credentials; skips files older than the remote copy)"
-        ),
-    )
-    push_ais_dbs_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-    push_ais_dbs_p.add_argument(
-        "--regions",
-        default=None,
-        metavar="REGIONS",
-        help=(
-            "Comma-separated region names to upload "
-            f"(default: all eligible DBs). Known regions: {', '.join(_REGION_PREFIX)}"
-        ),
-    )
-    push_ais_dbs_p.add_argument(
-        "--force",
-        action="store_true",
-        help="Overwrite remote even if it is newer than the local file",
-    )
-    push_ais_dbs_p.add_argument(
-        "--min-rows",
-        type=int,
-        default=0,
-        metavar="N",
-        help=(
-            "Skip upload if the local DB has fewer than N rows in ais_positions. "
-            "Use in CI to prevent small pipeline-only outputs from overwriting "
-            "real streaming DBs (e.g. --min-rows 1000)."
-        ),
-    )
-
-    pull_ais_dbs_p = sub.add_parser(
-        "pull-ais-dbs",
-        help=(
-            "Download regional AIS .duckdb files from arktrace-private-capvista/ais-dbs/ "
-            "(requires credentials; skips files older than the local copy)"
-        ),
-    )
-    pull_ais_dbs_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-    pull_ais_dbs_p.add_argument(
-        "--regions",
-        default=None,
-        metavar="REGIONS",
-        help="Comma-separated region names to download (default: all available in bucket)",
-    )
-    pull_ais_dbs_p.add_argument(
-        "--force",
-        action="store_true",
-        help="Overwrite local file even if it is newer than the remote copy",
-    )
-
-    push_gfw_eo_p = sub.add_parser(
-        "push-gfw-eo",
-        help="Upload *_eo_detections.parquet files to arktrace-private-capvista/gfw-eo/",
-    )
-    push_gfw_eo_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-
-    pull_gfw_eo_p = sub.add_parser(
-        "pull-gfw-eo",
-        help="Download GFW EO parquets from arktrace-private-capvista/gfw-eo/ into data-dir",
-    )
-    pull_gfw_eo_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-
-    push_gebco_p = sub.add_parser(
-        "push-gebco-masks",
-        help="Upload *_deep_cells.parquet GEBCO masks to arktrace-private-capvista/gebco-masks/",
-    )
+    push_gebco_p = sub.add_parser("push-gebco-masks",
+                                   help="Upload GEBCO depth-mask Parquets to maridb-public/")
     push_gebco_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-
-    pull_gebco_p = sub.add_parser(
-        "pull-gebco-masks",
-        help="Download GEBCO depth masks from arktrace-private-capvista/gebco-masks/ into data-dir",
-    )
+    pull_gebco_p = sub.add_parser("pull-gebco-masks",
+                                   help="Download GEBCO depth-mask Parquets from maridb-public/")
     pull_gebco_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+
+    push_gfw_p = sub.add_parser("push-gfw-eo",
+                                 help="Upload GFW EO detection Parquets to maridb-public/")
+    push_gfw_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+    pull_gfw_p = sub.add_parser("pull-gfw-eo",
+                                 help="Download GFW EO detection Parquets from maridb-public/")
+    pull_gfw_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
     sub.add_parser("list", help="List snapshot zips and shared objects in R2")
 
     args = parser.parse_args()
-
-    from dotenv import load_dotenv
-
-    load_dotenv()
-
-    # pull-custom-feeds uses its own private credentials (checked inside cmd_pull_custom_feeds)
-    # so it is treated as read_only here to skip the public-bucket credential check.
     read_only = args.command in (
-        "pull",
-        "pull-gdelt",
-        "pull-sanctions-db",
-        "pull-watchlists",
-        "pull-demo",
-        "pull-reviews",
-        "pull-custom-feeds",
-        "pull-ais-dbs",
-        "pull-gfw-eo",
-        "pull-gebco-masks",
-        "list",
+        "pull", "pull-gdelt", "pull-sanctions-db", "pull-watchlists",
+        "pull-demo", "pull-gebco-masks", "pull-gfw-eo", "pull-ais-parquet", "list",
     )
     if not _check_env(require_credentials=not read_only):
         return 1
@@ -2385,6 +1698,8 @@ def main() -> int:
     dispatch = {
         "push": cmd_push,
         "pull": cmd_pull,
+        "push-ais-parquet": cmd_push_ais_parquet,
+        "pull-ais-parquet": cmd_pull_ais_parquet,
         "push-gdelt": cmd_push_gdelt,
         "pull-gdelt": cmd_pull_gdelt,
         "push-sanctions-db": cmd_push_sanctions_db,
@@ -2393,19 +1708,11 @@ def main() -> int:
         "pull-watchlists": cmd_pull_watchlists,
         "push-demo": cmd_push_demo,
         "pull-demo": cmd_pull_demo,
-        "pull-reviews": cmd_pull_reviews,
-        "push-custom-feeds": cmd_push_custom_feeds,
-        "pull-custom-feeds": cmd_pull_custom_feeds,
         "push-ducklake-public": cmd_push_ducklake_public,
-        "push-ducklake-private": cmd_push_ducklake_private,
-        "push-ais-parquet": cmd_push_ais_parquet,
-        "pull-ais-parquet": cmd_pull_ais_parquet,
-        "push-ais-dbs": cmd_push_ais_dbs,
-        "pull-ais-dbs": cmd_pull_ais_dbs,
-        "push-gfw-eo": cmd_push_gfw_eo,
-        "pull-gfw-eo": cmd_pull_gfw_eo,
         "push-gebco-masks": cmd_push_gebco_masks,
         "pull-gebco-masks": cmd_pull_gebco_masks,
+        "push-gfw-eo": cmd_push_gfw_eo,
+        "pull-gfw-eo": cmd_pull_gfw_eo,
         "list": cmd_list,
     }
     return dispatch[args.command](args)
