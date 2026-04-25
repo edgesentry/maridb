@@ -239,8 +239,8 @@ def _load_ais_from_parquet(region: RegionConfig) -> int:
     return rows
 
 
-def step_ingest(region: RegionConfig, gdelt_days: int = 3) -> bool:
-    logger.info("[1/4] Ingest — AIS, vessel registry, sanctions, GDELT")
+def step_ingest(region: RegionConfig) -> bool:
+    logger.info("[1/4] Ingest — AIS, vessel registry, sanctions")
     env = {"DB_PATH": region.db_path, "MARIDB_REGION": region.name}
 
     # Load AIS positions from downloaded Parquet partitions first
@@ -250,7 +250,6 @@ def step_ingest(region: RegionConfig, gdelt_days: int = 3) -> bool:
         ([sys.executable, "-m", "pipelines.ingest.schema", "--db", region.db_path], "schema"),
         ([sys.executable, "-m", "pipelines.ingest.sanctions", "--db", region.db_path], "sanctions"),
         ([sys.executable, "-m", "pipelines.ingest.vessel_registry", "--db", region.db_path], "vessel_registry"),
-        ([sys.executable, "-m", "pipelines.ingest.gdelt", "--days", str(gdelt_days)], "gdelt"),
     ]
     for cmd, label in steps:
         result = _run(cmd, env)
@@ -356,8 +355,6 @@ def main() -> None:
     parser.add_argument("--skip-score", action="store_true")
     parser.add_argument("--skip-distribute", action="store_true",
                         help="Skip Gate 2 distribute step (use when S3 credentials are absent)")
-    parser.add_argument("--gdelt-days", type=int, default=3, metavar="N",
-                        help="Number of days of GDELT events to ingest (default: 3)")
     parser.add_argument("--seed-dummy", action="store_true",
                         help="Seed known OFAC-sanctioned vessels for CI known-case floor")
     parser.add_argument("--stream-duration", type=int, default=0, metavar="SECS",
@@ -371,7 +368,7 @@ def main() -> None:
 
     steps = []
     if not args.skip_ingest:
-        steps.append(("ingest", lambda: step_ingest(region, gdelt_days=args.gdelt_days)))
+        steps.append(("ingest", lambda: step_ingest(region)))
     if not args.skip_features:
         steps.append(("features", lambda: step_features(region, seed_dummy=args.seed_dummy)))
     if not args.skip_score:
