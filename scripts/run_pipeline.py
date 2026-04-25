@@ -33,14 +33,15 @@ class RegionConfig:
     watchlist_key: str
 
 
-# Resolve DB directory from MARIDB_DATA_DIR (set by LaunchAgents and CI) or default.
-# LaunchAgents write to {MARIDB_DATA_DIR}/{region}.duckdb.
-_DB_DIR = Path(
+_MARIDB_DATA = Path(
     os.getenv("MARIDB_DATA_DIR") or os.getenv("DATA_DIR") or (Path.home() / ".maridb" / "data")
 )
+_DB_DIR = _MARIDB_DATA / "processed" / "ais"
+_DOWNLOADS_DIR = _MARIDB_DATA / "downloads" / "ais"
 
 
 def _db(stem: str) -> str:
+    _DB_DIR.mkdir(parents=True, exist_ok=True)
     return str(_DB_DIR / f"{stem}.duckdb")
 
 
@@ -198,9 +199,47 @@ def _seed_dummy_vessels(db_path: str) -> None:
     logger.info("  ✓ seeded %d dummy sanctioned vessels", len(_DUMMY_MMSIS))
 
 
+def _load_ais_from_parquet(region: RegionConfig) -> int:
+    """Load downloaded AIS Parquet partitions into the processed DuckDB. Returns row count."""
+    parquet_glob = _DOWNLOADS_DIR / f"region={region.name}" / "date=*" / "positions.parquet"
+    parquet_files = sorted(_DOWNLOADS_DIR.glob(f"region={region.name}/date=*/positions.parquet"))
+    if not parquet_files:
+        logger.warning("  ⚠ No AIS Parquet partitions found in %s", _DOWNLOADS_DIR / f"region={region.name}")
+        return 0
+
+    con = duckdb.connect(region.db_path)
+    try:
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS ais_positions (
+                mmsi        VARCHAR,
+                timestamp   TIMESTAMPTZ,
+                lat         DOUBLE,
+                lon         DOUBLE,
+                sog         FLOAT,
+                cog         FLOAT,
+                nav_status  INTEGER,
+                ship_type   INTEGER
+            )
+        """)
+        files_str = ", ".join(f"'{p}'" for p in parquet_files)
+        rows = con.execute(f"""
+            INSERT INTO ais_positions
+            SELECT mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type
+            FROM read_parquet([{files_str}])
+            WHERE (mmsi, timestamp) NOT IN (SELECT mmsi, timestamp FROM ais_positions)
+        """).rowcount or 0
+    finally:
+        con.close()
+    logger.info("  ✓ ais_positions: loaded %d new rows from %d partition(s)", rows, len(parquet_files))
+    return rows
+
+
 def step_ingest(region: RegionConfig, gdelt_days: int = 3) -> bool:
     logger.info("[1/4] Ingest — AIS, vessel registry, sanctions, GDELT")
     env = {"DB_PATH": region.db_path, "MARIDB_REGION": region.name}
+
+    # Load AIS positions from downloaded Parquet partitions first
+    _load_ais_from_parquet(region)
 
     steps = [
         ([sys.executable, "-m", "pipelines.ingest.schema", "--db", region.db_path], "schema"),

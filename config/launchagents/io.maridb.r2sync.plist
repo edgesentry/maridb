@@ -8,21 +8,23 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/opt/homebrew/bin/uv</string>
+    <string>REPLACE_WITH_UV_BIN</string>
     <string>run</string>
     <string>--project</string>
-    <string>/Users/yoheionishi/work/edgesentry/maridb</string>
+    <string>REPLACE_WITH_PROJECT_DIR</string>
     <string>python</string>
-    <string>/Users/yoheionishi/work/edgesentry/maridb/scripts/sync_r2.py</string>
+    <string>REPLACE_WITH_PROJECT_DIR/scripts/sync_r2.py</string>
     <string>push-ais-parquet</string>
     <string>--regions</string>
     <string>japansea,blacksea,middleeast,singapore,europe,gulfofmexico,hornofafrica,persiangulf,gulfofaden,gulfofguinea</string>
     <string>--data-dir</string>
-    <string>/Users/yoheionishi/work/edgesentry/maridb/data/processed</string>
+    <string>REPLACE_WITH_HOME/.maridb/data/raw/ais</string>
+    <string>--staging-dir</string>
+    <string>REPLACE_WITH_HOME/.maridb/data/staging/ais</string>
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/yoheionishi/work/edgesentry/maridb</string>
+  <string>REPLACE_WITH_PROJECT_DIR</string>
 
   <key>EnvironmentVariables</key>
   <dict>
@@ -33,9 +35,9 @@
     <key>S3_BUCKET</key>
     <string>maridb-public</string>
     <key>HOME</key>
-    <string>/Users/yoheionishi</string>
+    <string>REPLACE_WITH_HOME</string>
     <key>PATH</key>
-    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/yoheionishi/.local/bin:/Users/yoheionishi/.cargo/bin</string>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:REPLACE_WITH_HOME/.local/bin:REPLACE_WITH_HOME/.cargo/bin</string>
     <key>PYTHONUNBUFFERED</key>
     <string>1</string>
   </dict>
@@ -48,8 +50,8 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/Users/yoheionishi/.maridb/r2sync.log</string>
+  <string>REPLACE_WITH_LOG_DIR/r2sync.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/yoheionishi/.maridb/r2sync.err</string>
+  <string>REPLACE_WITH_LOG_DIR/r2sync.err</string>
 </dict>
 </plist>
