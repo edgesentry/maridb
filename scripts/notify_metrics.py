@@ -35,8 +35,8 @@ _REGRESSION_THRESHOLD = 0.01  # #507: lowered from 0.02 — catches single-step 
 
 def _load_report() -> dict:
     if not _REPORT_PATH.exists():
-        print(f"Report not found: {_REPORT_PATH}", file=sys.stderr)
-        sys.exit(1)
+        print(f"Report not found: {_REPORT_PATH} — sending pipeline-only metrics email", file=sys.stderr)
+        return {}
     with _REPORT_PATH.open() as f:
         return json.load(f)
 
