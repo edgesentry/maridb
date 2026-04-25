@@ -329,10 +329,10 @@ jobs:
       - name: Send metrics email (#210)
         if: always()
         env:
-          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
+          NOTIFY_EMAIL: ${{ vars.NOTIFY_EMAIL }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          SMTP_USER: ${{ vars.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SNAPSHOT_ID: ${{ steps.push.outputs.snapshot_id }}
           SNAPSHOT_SIZE_MB: ${{ steps.push.outputs.snapshot_mb }}
