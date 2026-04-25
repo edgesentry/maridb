@@ -242,19 +242,6 @@ jobs:
           # run `pull-demo` (or fetch_demo_data.sh) without any credentials.
           uv run python scripts/sync_r2.py push-demo
 
-      - name: Push DuckLake catalog to maridb-public
-        # Checkpoints pipeline Parquet files into the DuckLake catalog and pushes
-        # catalog.duckdb + data/ to maridb-public (public, no-auth).
-        # arktrace#519 will replace this with push-manifest once implemented.
-        continue-on-error: true
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: auto
-        run: |
-          uv run python scripts/checkpoint_ducklake.py \
-            --push-public \
-            --verbose
 
       - name: Push OpenSanctions DB to R2 (push-sanctions-db)
         # public_eval.duckdb is only written when the full pipeline runs (not
