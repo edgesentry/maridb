@@ -45,7 +45,9 @@ class TestPushAisParquet:
                     "ship_type TINYINT)")
         con.close()
         # File is < 1 MB so _ais_db_candidates skips it
-        args = argparse.Namespace(data_dir=str(tmp_path), regions="singapore")
+        args = argparse.Namespace(
+            data_dir=str(tmp_path), staging_dir=str(tmp_path / "staging"), regions="singapore"
+        )
         rc = sync_r2.cmd_push_ais_parquet(args)
         assert rc == 1  # no eligible files
 
@@ -58,10 +60,13 @@ class TestPushAisParquet:
 
         written_keys = []
 
-        def fake_write_table(table, r2_key, filesystem, compression):
-            written_keys.append(r2_key)
+        def fake_write_table(table, path, filesystem=None, compression=None):
+            if filesystem is not None:  # only track R2 uploads, not local staging writes
+                written_keys.append(path)
 
-        args = argparse.Namespace(data_dir=str(tmp_path), regions="singapore")
+        args = argparse.Namespace(
+            data_dir=str(tmp_path), staging_dir=str(tmp_path / "staging"), regions="singapore"
+        )
         with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
              patch.object(sync_r2, "_ais_db_candidates", return_value=[db]), \
              patch("pyarrow.parquet.write_table", side_effect=fake_write_table):
@@ -83,10 +88,13 @@ class TestPushAisParquet:
 
         written_keys = []
 
-        def fake_write_table(table, r2_key, filesystem, compression):
-            written_keys.append(r2_key)
+        def fake_write_table(table, path, filesystem=None, compression=None):
+            if filesystem is not None:
+                written_keys.append(path)
 
-        args = argparse.Namespace(data_dir=str(tmp_path), regions="singapore")
+        args = argparse.Namespace(
+            data_dir=str(tmp_path), staging_dir=str(tmp_path / "staging"), regions="singapore"
+        )
         with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
              patch.object(sync_r2, "_ais_db_candidates", return_value=[db]), \
              patch("pyarrow.parquet.write_table", side_effect=fake_write_table):
@@ -96,7 +104,9 @@ class TestPushAisParquet:
         assert not any("date=2026-04-01" in k for k in written_keys)
 
     def test_no_eligible_dbs(self, tmp_path):
-        args = argparse.Namespace(data_dir=str(tmp_path), regions="singapore")
+        args = argparse.Namespace(
+            data_dir=str(tmp_path), staging_dir=str(tmp_path / "staging"), regions="singapore"
+        )
         rc = sync_r2.cmd_push_ais_parquet(args)
         assert rc == 1
 
