@@ -1481,6 +1481,168 @@ def cmd_pull_gfw_eo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
+    """Export ais_positions from local .duckdb to Parquet and upload to maridb-public.
+
+    For each region DB, exports ais_positions partitioned by date to:
+      maridb-public/ais/region=<region>/date=YYYY-MM-DD/positions.parquet
+
+    Only dates not yet present in R2 are uploaded (incremental). The local .duckdb
+    remains as the source of truth; this command never deletes local data.
+    """
+    import duckdb as _duckdb
+    import pyarrow.fs as pafs
+    import pyarrow.parquet as pq
+    import tempfile
+
+    data_dir = Path(args.data_dir)
+    regions: list[str] | None = (
+        [r.strip() for r in args.regions.split(",")] if args.regions else None
+    )
+    candidates = _ais_db_candidates(data_dir, regions)
+    if not candidates:
+        print("No eligible AIS .duckdb files found.", file=sys.stderr)
+        return 1
+
+    fs = _build_r2_fs()
+    bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
+    total_uploaded = 0
+
+    for db_path in candidates:
+        # Resolve region name from filename stem (e.g. singapore.duckdb → singapore)
+        stem = db_path.stem
+        region = next((r for r, p in _REGION_PREFIX.items() if p == stem), stem)
+
+        print(f"\n[{region}] Reading {db_path.name} ...")
+        try:
+            con = _duckdb.connect(str(db_path), read_only=True)
+            row_count = con.execute("SELECT COUNT(*) FROM ais_positions").fetchone()[0]
+        except Exception as exc:
+            print(f"  [skip] cannot open DB: {exc}", file=sys.stderr)
+            continue
+
+        if row_count == 0:
+            print(f"  [skip] ais_positions is empty")
+            continue
+
+        # Get distinct dates in the DB
+        dates = [
+            r[0].strftime("%Y-%m-%d")
+            for r in con.execute(
+                "SELECT DISTINCT CAST(timestamp AS DATE) AS d FROM ais_positions ORDER BY d"
+            ).fetchall()
+        ]
+        print(f"  {row_count:,} rows across {len(dates)} date(s)")
+
+        # Check which dates already exist in R2 (incremental upload)
+        r2_prefix = f"{bucket}/ais/region={region}/"
+        existing_dates: set[str] = set()
+        try:
+            selector = pafs.FileSelector(r2_prefix, recursive=True)
+            for info in fs.get_file_info(selector):
+                # path: maridb-public/ais/region=singapore/date=2026-04-25/positions.parquet
+                parts = info.path.split("/")
+                for part in parts:
+                    if part.startswith("date="):
+                        existing_dates.add(part.removeprefix("date="))
+        except Exception:
+            pass  # prefix doesn't exist yet — upload all
+
+        dates_to_upload = [d for d in dates if d not in existing_dates]
+        if not dates_to_upload:
+            print(f"  all {len(dates)} date(s) already in R2 — skipping")
+            con.close()
+            continue
+
+        print(f"  uploading {len(dates_to_upload)} new date(s) "
+              f"({len(existing_dates)} already in R2) ...")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for date_str in dates_to_upload:
+                df = con.execute(
+                    "SELECT mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type "
+                    "FROM ais_positions WHERE CAST(timestamp AS DATE) = ? "
+                    "ORDER BY mmsi, timestamp",
+                    [date_str],
+                ).arrow()
+
+                r2_key = f"{bucket}/ais/region={region}/date={date_str}/positions.parquet"
+                try:
+                    pq.write_table(df, r2_key, filesystem=fs, compression="snappy")
+                    print(f"    {date_str} ({df.num_rows:,} rows) → {r2_key}")
+                    total_uploaded += 1
+                except Exception as exc:
+                    print(f"    [error] {date_str}: {exc}", file=sys.stderr)
+
+        con.close()
+
+    print(f"\nDone. {total_uploaded} Parquet partition(s) uploaded to {bucket}/ais/")
+    return 0
+
+
+def cmd_pull_ais_parquet(args: argparse.Namespace) -> int:
+    """Download AIS Parquet partitions from maridb-public/ais/ to local data dir.
+
+    Downloads only the last --days days (default 60). Skips partitions already
+    present locally. Output layout:
+      <data-dir>/ais/region=<region>/date=YYYY-MM-DD/positions.parquet
+    """
+    import pyarrow.fs as pafs
+    import pyarrow.parquet as pq
+    from datetime import date, timedelta
+
+    data_dir = Path(args.data_dir)
+    bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
+    regions_filter: set[str] | None = (
+        {r.strip() for r in args.regions.split(",")} if args.regions else None
+    )
+    cutoff = (date.today() - timedelta(days=args.days)).isoformat()
+
+    fs = _build_r2_fs()
+    total = 0
+
+    try:
+        selector = pafs.FileSelector(f"{bucket}/ais/", recursive=True)
+        all_files = fs.get_file_info(selector)
+    except Exception as exc:
+        print(f"Error listing {bucket}/ais/: {exc}", file=sys.stderr)
+        return 1
+
+    for info in all_files:
+        if not info.path.endswith(".parquet"):
+            continue
+        # path: maridb-public/ais/region=singapore/date=2026-04-25/positions.parquet
+        parts = info.path.split("/")
+        region_part = next((p for p in parts if p.startswith("region=")), None)
+        date_part = next((p for p in parts if p.startswith("date=")), None)
+        if not region_part or not date_part:
+            continue
+
+        region = region_part.removeprefix("region=")
+        date_str = date_part.removeprefix("date=")
+
+        if regions_filter and region not in regions_filter:
+            continue
+        if date_str < cutoff:
+            continue
+
+        local_path = data_dir / "ais" / f"region={region}" / f"date={date_str}" / "positions.parquet"
+        if local_path.exists():
+            continue
+
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            table = pq.read_table(info.path, filesystem=fs)
+            pq.write_table(table, local_path, compression="snappy")
+            print(f"  {region}/{date_str} ({table.num_rows:,} rows) → {local_path}")
+            total += 1
+        except Exception as exc:
+            print(f"  [error] {region}/{date_str}: {exc}", file=sys.stderr)
+
+    print(f"\nDone. {total} partition(s) downloaded to {data_dir}/ais/")
+    return 0
+
+
 def cmd_push_ais_dbs(args: argparse.Namespace) -> int:
     """Upload regional AIS .duckdb files to the private R2 bucket for backup.
 
@@ -1887,6 +2049,46 @@ def main() -> int:
         ),
     )
 
+    push_ais_parquet_p = sub.add_parser(
+        "push-ais-parquet",
+        help=(
+            "Export ais_positions from local .duckdb to Parquet and upload to "
+            "maridb-public/ais/region=<region>/date=YYYY-MM-DD/positions.parquet "
+            "(incremental — only uploads dates not already in R2)"
+        ),
+    )
+    push_ais_parquet_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+    push_ais_parquet_p.add_argument(
+        "--regions",
+        default=None,
+        metavar="REGIONS",
+        help=(
+            "Comma-separated region names to export "
+            f"(default: all eligible DBs). Known regions: {', '.join(_REGION_PREFIX)}"
+        ),
+    )
+
+    pull_ais_parquet_p = sub.add_parser(
+        "pull-ais-parquet",
+        help=(
+            "Download AIS Parquet partitions from maridb-public/ais/ to data/processed/ais/"
+        ),
+    )
+    pull_ais_parquet_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+    pull_ais_parquet_p.add_argument(
+        "--regions",
+        default=None,
+        metavar="REGIONS",
+        help="Comma-separated region names to download (default: all available)",
+    )
+    pull_ais_parquet_p.add_argument(
+        "--days",
+        type=int,
+        default=60,
+        metavar="N",
+        help="Only download partitions from the last N days (default: 60)",
+    )
+
     push_ais_dbs_p = sub.add_parser(
         "push-ais-dbs",
         help=(
@@ -2007,6 +2209,8 @@ def main() -> int:
         "pull-custom-feeds": cmd_pull_custom_feeds,
         "push-ducklake-public": cmd_push_ducklake_public,
         "push-ducklake-private": cmd_push_ducklake_private,
+        "push-ais-parquet": cmd_push_ais_parquet,
+        "pull-ais-parquet": cmd_pull_ais_parquet,
         "push-ais-dbs": cmd_push_ais_dbs,
         "pull-ais-dbs": cmd_pull_ais_dbs,
         "push-gfw-eo": cmd_push_gfw_eo,

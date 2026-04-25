@@ -14,7 +14,7 @@
     <string>/Users/yoheionishi/work/edgesentry/maridb</string>
     <string>python</string>
     <string>/Users/yoheionishi/work/edgesentry/maridb/scripts/sync_r2.py</string>
-    <string>push-ais-dbs</string>
+    <string>push-ais-parquet</string>
     <string>--regions</string>
     <string>japansea,blacksea,middleeast,singapore,europe,gulfofmexico,hornofafrica,persiangulf,gulfofaden,gulfofguinea</string>
     <string>--data-dir</string>

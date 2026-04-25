@@ -35,9 +35,6 @@ jobs:
     permissions:
       contents: read
     env:
-      # All pipeline tools resolve data paths via MARIDB_DATA_DIR.
-      # Set once here so pull-ais-dbs, run_pipeline.py, push-watchlists,
-      # and push-ais-dbs all use the same directory.
       MARIDB_DATA_DIR: data/processed
 
     steps:
@@ -52,58 +49,28 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --group dev
 
-      # Cache custom feeds by ISO week — feeds change infrequently so a weekly
-      # key avoids re-downloading hundreds of MB on every run. On cache miss the
-      # pull step below fetches from R2 and the result is saved automatically.
-      - name: Set custom feeds cache key
-        id: feeds-cache-key
-        run: echo "week=$(date +%G-%V)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore custom feeds cache
-        id: feeds-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
-        with:
-          path: _inputs/custom_feeds/
-          key: custom-feeds-${{ steps.feeds-cache-key.outputs.week }}
-
-      # Pull AIS DBs, watchlists, GEBCO masks, and GFW EO parquets in parallel.
-      # Custom feeds are pulled separately below (conditional on cache miss).
-      # Optional pulls (watchlists, GEBCO, GFW EO) use || true so a missing
-      # object does not abort the job — same semantics as the old continue-on-error.
+      # Pull AIS Parquet, watchlists, and GFW EO parquets in parallel from maridb-public.
+      # AIS data is uploaded by the local macOS r2sync LaunchAgent (push-ais-parquet).
+      # Optional pulls use || true so a missing object does not abort the job.
       - name: Pull data from R2 (parallel)
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: auto
         run: |
-          uv run python scripts/sync_r2.py pull-ais-dbs \
+          # AIS Parquet partitions written by local macOS push-ais-parquet job
+          uv run python scripts/sync_r2.py pull-ais-parquet \
             --regions japansea,blacksea,middleeast,singapore,europe &
           PID_AIS=$!
-          # Download real watchlists produced by a previous pipeline run.
-          # Without this step, the backtest has no watchlists to evaluate.
+          # Watchlists from previous pipeline run
           uv run python scripts/sync_r2.py pull-watchlists &
           PID_WL=$!
-          # GEBCO 200m depth masks — used by run_pipeline.py for STS filtering.
-          uv run python scripts/sync_r2.py pull-gebco-masks &
-          PID_GB=$!
-          # GFW EO parquets from the weekly gfw-ingest.yml job.
+          # GFW EO parquets from the weekly gfw-ingest.yml job
           uv run python scripts/sync_r2.py pull-gfw-eo &
           PID_GFW=$!
           wait $PID_WL  || echo "::warning::pull-watchlists skipped or failed (non-fatal)"
-          wait $PID_GB  || echo "::warning::pull-gebco-masks skipped or failed (non-fatal)"
           wait $PID_GFW || echo "::warning::pull-gfw-eo skipped or failed (non-fatal)"
-          wait $PID_AIS  # required — fail the step if AIS DBs cannot be pulled
-
-      # Pull proprietary feed files only when the weekly cache is cold.
-      # Skips gracefully when credentials are absent (forks).
-      - name: Pull custom feeds from R2
-        if: steps.feeds-cache.outputs.cache-hit != 'true'
-        continue-on-error: true
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: auto
-        run: uv run python scripts/sync_r2.py pull-custom-feeds
+          wait $PID_AIS  # required
 
       # Run all five region pipelines concurrently. Each region writes to its own
       # data/processed/{region}_*.{duckdb,parquet} files with no shared state,
