@@ -36,6 +36,7 @@ jobs:
     permissions:
       contents: read
     strategy:
+      max-parallel: 2  # GFW API allows max 2 concurrent requests
       # Secrets cannot be referenced in matrix values — use token_num (1/2/3)
       # and resolve the actual secret in the step env block below.
       matrix:
