@@ -75,11 +75,12 @@ process_region() {
     return
   fi
 
-  # Generate .local.plist with real secrets
+  # Generate .local.plist with real secrets and resolved paths
   sed \
     -e "s|REPLACE_WITH_AISSTREAM_API_KEY|$AISSTREAM_API_KEY|g" \
     -e "s|REPLACE_WITH_AWS_ACCESS_KEY_ID|${AWS_ACCESS_KEY_ID:-}|g" \
     -e "s|REPLACE_WITH_AWS_SECRET_ACCESS_KEY|${AWS_SECRET_ACCESS_KEY:-}|g" \
+    -e "s|REPLACE_WITH_PROJECT_DIR|$HOME/.maridb|g" \
     "$template" > "$local_plist"
 
   mkdir -p "$HOME/.maridb"
@@ -107,6 +108,7 @@ process_r2sync() {
   sed \
     -e "s|REPLACE_WITH_AWS_ACCESS_KEY_ID|$AWS_ACCESS_KEY_ID|g" \
     -e "s|REPLACE_WITH_AWS_SECRET_ACCESS_KEY|$AWS_SECRET_ACCESS_KEY|g" \
+    -e "s|REPLACE_WITH_PROJECT_DIR|$HOME/.maridb|g" \
     "$template" > "$local_plist"
 
   launchctl unload "$local_plist" 2>/dev/null || true
