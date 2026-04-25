@@ -1,0 +1,17 @@
+name = "maridb"
+compatibility_date = "2026-04-25"
+
+[[r2_buckets]]
+binding = "MARIDB_PUBLIC"
+bucket_name = "maridb-public"
+# Public URL: https://pub-e088008b61ee432b906ef710d52af28c.r2.dev
+
+[[r2_buckets]]
+binding = "ARKTRACE_PUBLIC"
+bucket_name = "arktrace-public"
+# Public URL: https://pub-<arktrace-hash>.r2.dev
+
+[[r2_buckets]]
+binding = "DOCUMARIS_PUBLIC"
+bucket_name = "documaris-public"
+# Public URL: https://pub-2892b1afd7b94cc6a381e3dcec4edc30.r2.dev

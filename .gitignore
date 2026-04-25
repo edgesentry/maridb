@@ -1,0 +1,12 @@
+.env
+.env.*
+*.parquet
+*.csv
+*.jsonl
+data/
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+.wrangler/
+dist/
