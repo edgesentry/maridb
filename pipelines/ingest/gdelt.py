@@ -24,6 +24,21 @@ import polars as pl
 
 from pipelines.storage.config import is_s3, lance_db_uri, lance_storage_options
 
+
+def _lance_table_names(db) -> list[str]:
+    """Return table names from a LanceDB connection, compatible with all versions."""
+    try:
+        result = db.table_names()  # deprecated in >=0.30 but still works
+        return list(result)
+    except Exception:
+        pass
+    result = db.list_tables()
+    # lancedb >= 0.30 returns ListTablesResponse with .tables attribute
+    if hasattr(result, "tables"):
+        tables = result.tables
+        return [t if isinstance(t, str) else t.name for t in (tables or [])]
+    return list(result)
+
 DEFAULT_LANCE_PATH = lance_db_uri()
 GDELT_BASE_URL = "http://data.gdeltproject.org/events"
 
@@ -231,7 +246,7 @@ def ingest_gdelt_events(
         else lancedb.connect(lance_path)
     )
 
-    if "events" in db.table_names():
+    if "events" in _lance_table_names(db):
         table = db.open_table("events")
         table.add(records)
     else:
@@ -267,7 +282,7 @@ def query_gdelt_context(
         )
     except Exception:
         return []
-    if "events" not in db.table_names():
+    if "events" not in _lance_table_names(db):
         return []
 
     table = db.open_table("events")
