@@ -1663,6 +1663,7 @@ def main() -> int:
 
     gdelt_push_p = sub.add_parser("push-gdelt", help="Upload gdelt.lance as gdelt.lance.zip")
     gdelt_push_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+    gdelt_push_p.add_argument("--force", action="store_true", help="Re-upload even if already in R2")
     gdelt_pull_p = sub.add_parser("pull-gdelt", help="Download gdelt.lance.zip and extract")
     gdelt_pull_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
