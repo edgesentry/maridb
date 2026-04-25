@@ -35,22 +35,29 @@ _DUMMY_MMSIS: frozenset[str] = frozenset(
     }
 )
 
-# Watchlists are pulled from R2 to the canonical user data directory.
-# Pipeline operators can override with MARIDB_DATA_DIR or DATA_DIR.
-_watchlist_dir = Path(
+# Watchlists are written by run_pipeline.py to data/processed/score/{region}_watchlist.parquet.
+# In CI, MARIDB_DATA_DIR=data/processed; locally defaults to ~/.maridb/data.
+_data_dir = Path(
     os.getenv("MARIDB_DATA_DIR") or os.getenv("DATA_DIR") or (Path.home() / ".maridb" / "data")
 )
+# run_pipeline.py writes to {data_dir}/score/{region}_watchlist.parquet;
+# pull-watchlists extracts to {data_dir}/{region}_watchlist.parquet (flat).
+# Check score/ first (pipeline output), then top-level (pulled from R2 zip).
+def _watchlist_path(stem: str) -> Path:
+    score_path = _data_dir / "score" / f"{stem}_watchlist.parquet"
+    flat_path = _data_dir / f"{stem}_watchlist.parquet"
+    return score_path if score_path.exists() else flat_path
 
 WATCHLIST_BY_REGION: dict[str, Path] = {
-    "singapore": _watchlist_dir / "singapore_watchlist.parquet",
-    "japan": _watchlist_dir / "japansea_watchlist.parquet",
-    "middleeast": _watchlist_dir / "middleeast_watchlist.parquet",
-    "europe": _watchlist_dir / "europe_watchlist.parquet",
-    "persiangulf": _watchlist_dir / "persiangulf_watchlist.parquet",
-    "gulfofguinea": _watchlist_dir / "gulfofguinea_watchlist.parquet",
-    "gulfofaden": _watchlist_dir / "gulfofaden_watchlist.parquet",
-    "gulfofmexico": _watchlist_dir / "gulfofmexico_watchlist.parquet",
-    "blacksea": _watchlist_dir / "blacksea_watchlist.parquet",
+    "singapore": _watchlist_path("singapore"),
+    "japan": _watchlist_path("japansea"),
+    "middleeast": _watchlist_path("middleeast"),
+    "europe": _watchlist_path("europe"),
+    "persiangulf": _watchlist_path("persiangulf"),
+    "gulfofguinea": _watchlist_path("gulfofguinea"),
+    "gulfofaden": _watchlist_path("gulfofaden"),
+    "gulfofmexico": _watchlist_path("gulfofmexico"),
+    "blacksea": _watchlist_path("blacksea"),
 }
 
 
