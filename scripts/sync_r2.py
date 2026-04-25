@@ -1605,6 +1605,115 @@ def _check_env(require_credentials: bool = True) -> bool:
     return True
 
 
+_ARKTRACE_BUCKET = "arktrace-public"
+_ARKTRACE_PUBLIC_BASE_URL = "https://arktrace-public.edgesentry.io"
+
+# Tables exposed to the arktrace browser app via ducklake_manifest.json.
+# Each entry maps a local filename glob → (r2 key, DuckDB-WASM register_as name).
+_ARKTRACE_TABLES: list[tuple[str, str, str]] = [
+    # (glob pattern, r2 key template, register_as)
+    # region is substituted at runtime for region-scoped files
+    ("*_watchlist.parquet",     "score/{filename}",     "watchlist.parquet"),
+    ("composite_scores.parquet", "score/{filename}",    "composite_scores.parquet"),
+    ("causal_effects.parquet",  "score/{filename}",     "causal_effects.parquet"),
+    ("score_history.parquet",   "score/{filename}",     "score_history.parquet"),
+    ("validation_metrics.parquet", "score/{filename}",  "validation_metrics.parquet"),
+]
+
+# Region prefix → region tag used in the manifest (matches arktrace app config)
+_MANIFEST_REGION_TAG: dict[str, str] = {
+    "singapore": "singapore",
+    "japansea": "japansea",
+    "japan": "japansea",
+    "blacksea": "blacksea",
+    "europe": "europe",
+    "middleeast": "middleeast",
+}
+
+
+def cmd_push_arktrace(args: argparse.Namespace) -> int:
+    """Copy pipeline outputs from maridb-public → arktrace-public and write manifest.
+
+    Steps:
+      1. Upload score/*_watchlist.parquet + shared score Parquets to arktrace-public/score/
+      2. Write ducklake_manifest.json listing every uploaded file so opfs.ts can
+         discover and cache them without any app-side changes (arktrace#519).
+
+    The manifest format matches what opfs.ts already expects:
+      { "files": [{ "key", "url", "size_bytes", "register_as", "region"? }] }
+    """
+    import json as _json
+
+    data_dir = Path(args.data_dir)
+    fs = _build_r2_fs()
+    manifest_files: list[dict] = []
+
+    # Collect all score Parquets to upload
+    upload_pairs: list[tuple[Path, str, str, str | None]] = []  # (local, r2_key, register_as, region)
+
+    # Region-scoped watchlists: singapore_watchlist.parquet → region tag "singapore"
+    for wl_path in sorted(data_dir.glob("*_watchlist.parquet")):
+        stem = wl_path.stem.replace("_watchlist", "")
+        region_tag = _MANIFEST_REGION_TAG.get(stem)
+        r2_key = f"score/{wl_path.name}"
+        upload_pairs.append((wl_path, r2_key, "watchlist.parquet", region_tag))
+
+    # Shared (non-region) score files
+    for name, register_as in [
+        ("composite_scores.parquet",    "composite_scores.parquet"),
+        ("causal_effects.parquet",      "causal_effects.parquet"),
+        ("score_history.parquet",       "score_history.parquet"),
+        ("validation_metrics.parquet",  "validation_metrics.parquet"),
+    ]:
+        p = data_dir / name
+        if p.exists():
+            upload_pairs.append((p, f"score/{name}", register_as, None))
+
+    if not upload_pairs:
+        print(
+            f"No score Parquets found in {data_dir}. Run the pipeline first.",
+            file=sys.stderr,
+        )
+        return 1
+
+    total_bytes = 0
+    for local_path, r2_key, register_as, region_tag in upload_pairs:
+        if not local_path.exists():
+            print(f"  [skip] {local_path.name} — not found", file=sys.stderr)
+            continue
+        size = local_path.stat().st_size
+        r2_path = f"{_ARKTRACE_BUCKET}/{r2_key}"
+        print(f"  {local_path.name} ({size / 1024:.1f} KB) → {r2_path}")
+        _upload_file(fs, local_path, r2_path)
+        total_bytes += size
+        entry: dict = {
+            "key": r2_key,
+            "url": f"{_ARKTRACE_PUBLIC_BASE_URL}/{r2_key}",
+            "size_bytes": size,
+            "register_as": register_as,
+        }
+        if region_tag:
+            entry["region"] = region_tag
+        manifest_files.append(entry)
+
+    # Write and upload ducklake_manifest.json
+    manifest = {"files": manifest_files}
+    manifest_json = _json.dumps(manifest, indent=2)
+    manifest_tmp = Path(tempfile.mktemp(suffix=".json"))
+    manifest_tmp.write_text(manifest_json)
+    manifest_r2 = f"{_ARKTRACE_BUCKET}/ducklake_manifest.json"
+    print(f"  ducklake_manifest.json ({len(manifest_json)} B) → {manifest_r2}")
+    _upload_file(fs, manifest_tmp, manifest_r2)
+    manifest_tmp.unlink(missing_ok=True)
+
+    print(
+        f"\nDone. Pushed {len(manifest_files)} file(s) ({total_bytes / 1_048_576:.2f} MB) "
+        f"+ manifest → arktrace-public\n"
+        f"  Manifest: {_ARKTRACE_PUBLIC_BASE_URL}/ducklake_manifest.json"
+    )
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Sync processed pipeline artifacts to/from Cloudflare R2.",
@@ -1685,6 +1794,12 @@ def main() -> int:
                                  help="Download GFW EO detection Parquets from maridb-public/")
     pull_gfw_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
+    push_arktrace_p = sub.add_parser(
+        "push-arktrace",
+        help="Copy score Parquets to arktrace-public and write ducklake_manifest.json (arktrace#519)",
+    )
+    push_arktrace_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+
     sub.add_parser("list", help="List snapshot zips and shared objects in R2")
 
     args = parser.parse_args()
@@ -1713,6 +1828,7 @@ def main() -> int:
         "pull-gebco-masks": cmd_pull_gebco_masks,
         "push-gfw-eo": cmd_push_gfw_eo,
         "pull-gfw-eo": cmd_pull_gfw_eo,
+        "push-arktrace": cmd_push_arktrace,
         "list": cmd_list,
     }
     return dispatch[args.command](args)
