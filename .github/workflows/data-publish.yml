@@ -233,15 +233,10 @@ jobs:
           # run `pull-demo` (or fetch_demo_data.sh) without any credentials.
           uv run python scripts/sync_r2.py push-demo
 
-      - name: Checkpoint DuckLake catalog and push to R2
-        # Reads pipeline output Parquet files, writes them into a DuckLake catalog,
-        # checkpoints to materialise clean Parquet files, then pushes:
-        #   - maridb-public/catalog.duckdb + data/...   (public, no-auth)
-        #   - arktrace-private-capvista/outputs/...        (authenticated Cap Vista)
-        # Runs continue-on-error so a DuckLake failure does not block the existing
-        # push step that already uploaded the snapshot zip.
-        # Phase 1 gate: if this step fails, check the logs before proceeding to
-        # Phase 2 browser code (see arktrace#302).
+      - name: Push DuckLake catalog to maridb-public
+        # Checkpoints pipeline Parquet files into the DuckLake catalog and pushes
+        # catalog.duckdb + data/ to maridb-public (public, no-auth).
+        # arktrace#519 will replace this with push-manifest once implemented.
         continue-on-error: true
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -250,7 +245,6 @@ jobs:
         run: |
           uv run python scripts/checkpoint_ducklake.py \
             --push-public \
-            --push-private \
             --verbose
 
       - name: Push OpenSanctions DB to R2 (push-sanctions-db)
@@ -276,16 +270,6 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: auto
         run: uv run python scripts/sync_r2.py push-watchlists
-
-      - name: Back up updated AIS DBs to private R2
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: auto
-        run: |
-          uv run python scripts/sync_r2.py push-ais-dbs \
-            --regions japansea,blacksea,middleeast,singapore,europe \
-            --min-rows 1000
 
       - name: Lead time validation (#268)
         run: |
