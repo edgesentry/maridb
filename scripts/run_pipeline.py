@@ -250,10 +250,11 @@ def _load_ais_from_parquet(region: RegionConfig) -> int:
 
         if vm_parquet.exists():
             con.execute(f"""
-                INSERT OR REPLACE INTO vessel_meta
+                INSERT INTO vessel_meta
                 SELECT mmsi, imo, name, flag, ship_type
                 FROM read_parquet('{vm_parquet}')
                 WHERE mmsi IS NOT NULL
+                  AND mmsi NOT IN (SELECT mmsi FROM vessel_meta)
             """)
             vm_count = con.execute("SELECT COUNT(*) FROM vessel_meta").fetchone()[0]
             logger.info("  ✓ vessel_meta: %d vessels loaded from %s", vm_count, vm_parquet.name)
