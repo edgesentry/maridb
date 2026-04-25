@@ -176,12 +176,7 @@ def step_features(region: RegionConfig, seed_dummy: bool = False) -> bool:
     env = {"DB_PATH": region.db_path}
 
     steps = [
-        (
-            [sys.executable, "-m", "pipelines.features.ais_behavior",
-             "--db", region.db_path,
-             "--bbox", *[str(x) for x in region.bbox]],
-            "ais_behavior",
-        ),
+        ([sys.executable, "-m", "pipelines.features.ais_behavior", "--db", region.db_path], "ais_behavior"),
         ([sys.executable, "-m", "pipelines.features.identity", "--db", region.db_path], "identity"),
         ([sys.executable, "-m", "pipelines.features.trade_mismatch", "--db", region.db_path], "trade_mismatch"),
         ([sys.executable, "-m", "pipelines.features.build_matrix", "--db", region.db_path], "build_matrix"),
