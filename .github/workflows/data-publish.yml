@@ -271,15 +271,6 @@ jobs:
           AWS_REGION: auto
         run: uv run python scripts/sync_r2.py push-watchlists
 
-      - name: Push score outputs to arktrace-public (arktrace#519)
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: auto
-        run: |
-          uv run python scripts/sync_r2.py push-arktrace \
-            --data-dir data/processed
-
       - name: Lead time validation (#268)
         run: |
           uv run python scripts/validate_lead_time_ofac.py \
