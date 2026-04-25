@@ -8,15 +8,15 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/opt/homebrew/bin/uv</string>
+    <string>REPLACE_WITH_UV_BIN</string>
     <string>run</string>
     <string>--project</string>
-    <string>/Users/yoheionishi/work/edgesentry/maridb</string>
+    <string>REPLACE_WITH_PROJECT_DIR</string>
     <string>python</string>
     <string>-m</string>
     <string>pipelines.ingest.ais_stream</string>
     <string>--db</string>
-    <string>/Users/yoheionishi/work/edgesentry/maridb/data/processed/europe.duckdb</string>
+    <string>REPLACE_WITH_PROJECT_DIR/data/raw/ais/europe.duckdb</string>
     <string>--bbox</string>
         <string>35</string>
     <string>-10</string>
@@ -29,18 +29,18 @@
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/yoheionishi/work/edgesentry/maridb</string>
+  <string>REPLACE_WITH_PROJECT_DIR</string>
 
   <key>EnvironmentVariables</key>
   <dict>
     <key>AISSTREAM_API_KEY</key>
     <string>REPLACE_WITH_AISSTREAM_API_KEY</string>
     <key>DB_PATH</key>
-    <string>/Users/yoheionishi/work/edgesentry/maridb/data/processed/europe.duckdb</string>
+    <string>REPLACE_WITH_PROJECT_DIR/data/raw/ais/europe.duckdb</string>
     <key>HOME</key>
-    <string>/Users/yoheionishi</string>
+    <string>REPLACE_WITH_HOME</string>
     <key>PATH</key>
-    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/yoheionishi/.local/bin:/Users/yoheionishi/.cargo/bin</string>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:REPLACE_WITH_HOME/.local/bin:REPLACE_WITH_HOME/.cargo/bin</string>
     <key>PYTHONUNBUFFERED</key>
     <string>1</string>
   </dict>
@@ -53,8 +53,8 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/Users/yoheionishi/.maridb/europe.log</string>
+  <string>REPLACE_WITH_LOG_DIR/europe.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/yoheionishi/.maridb/europe.err</string>
+  <string>REPLACE_WITH_LOG_DIR/europe.err</string>
 </dict>
 </plist>
