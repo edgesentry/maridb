@@ -236,6 +236,8 @@ def main() -> None:
                         help="Skip ingest step (use existing local DuckDB)")
     parser.add_argument("--skip-features", action="store_true")
     parser.add_argument("--skip-score", action="store_true")
+    parser.add_argument("--skip-distribute", action="store_true",
+                        help="Skip Gate 2 distribute step (use when S3 credentials are absent)")
     parser.add_argument("--gdelt-days", type=int, default=3, metavar="N",
                         help="Number of days of GDELT events to ingest (default: 3)")
     parser.add_argument("--seed-dummy", action="store_true",
@@ -256,7 +258,8 @@ def main() -> None:
         steps.append(("features", lambda: step_features(region, seed_dummy=args.seed_dummy)))
     if not args.skip_score:
         steps.append(("score", lambda: step_score(region)))
-    steps.append(("distribute", lambda: step_distribute(region)))
+    if not args.skip_distribute:
+        steps.append(("distribute", lambda: step_distribute(region)))
 
     for name, fn in steps:
         if not fn():
