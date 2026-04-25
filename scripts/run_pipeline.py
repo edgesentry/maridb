@@ -204,10 +204,12 @@ def _seed_dummy_vessels(db_path: str) -> None:
 
 
 def _load_ais_from_parquet(region: RegionConfig) -> int:
-    """Load downloaded AIS Parquet partitions into the processed DuckDB. Returns row count."""
+    """Load downloaded AIS positions + vessel_meta into the processed DuckDB."""
     parquet_files = sorted(_DOWNLOADS_DIR.glob(f"region={region.name}/date=*/positions.parquet"))
-    if not parquet_files:
-        logger.warning("  ⚠ No AIS Parquet partitions found in %s", _DOWNLOADS_DIR / f"region={region.name}")
+    vm_parquet = _DOWNLOADS_DIR.parent / "vessel_meta" / f"region={region.name}.parquet"
+
+    if not parquet_files and not vm_parquet.exists():
+        logger.warning("  ⚠ No AIS data found for %s in %s", region.name, _DOWNLOADS_DIR)
         return 0
 
     con = duckdb.connect(region.db_path)
@@ -224,18 +226,41 @@ def _load_ais_from_parquet(region: RegionConfig) -> int:
                 ship_type   INTEGER
             )
         """)
-        files_str = ", ".join(f"'{p}'" for p in parquet_files)
-        before = con.execute("SELECT COUNT(*) FROM ais_positions").fetchone()[0]
-        con.execute(f"""
-            INSERT INTO ais_positions
-            SELECT mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type
-            FROM read_parquet([{files_str}])
-            WHERE (mmsi, timestamp) NOT IN (SELECT mmsi, timestamp FROM ais_positions)
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS vessel_meta (
+                mmsi        VARCHAR,
+                imo         VARCHAR,
+                name        VARCHAR,
+                flag        VARCHAR,
+                ship_type   INTEGER
+            )
         """)
-        rows = con.execute("SELECT COUNT(*) FROM ais_positions").fetchone()[0] - before
+        rows = 0
+        if parquet_files:
+            files_str = ", ".join(f"'{p}'" for p in parquet_files)
+            before = con.execute("SELECT COUNT(*) FROM ais_positions").fetchone()[0]
+            con.execute(f"""
+                INSERT INTO ais_positions
+                SELECT mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type
+                FROM read_parquet([{files_str}])
+                WHERE (mmsi, timestamp) NOT IN (SELECT mmsi, timestamp FROM ais_positions)
+            """)
+            rows = con.execute("SELECT COUNT(*) FROM ais_positions").fetchone()[0] - before
+            logger.info("  ✓ ais_positions: loaded %d new rows from %d partition(s)", rows, len(parquet_files))
+
+        if vm_parquet.exists():
+            con.execute(f"""
+                INSERT OR REPLACE INTO vessel_meta
+                SELECT mmsi, imo, name, flag, ship_type
+                FROM read_parquet('{vm_parquet}')
+                WHERE mmsi IS NOT NULL
+            """)
+            vm_count = con.execute("SELECT COUNT(*) FROM vessel_meta").fetchone()[0]
+            logger.info("  ✓ vessel_meta: %d vessels loaded from %s", vm_count, vm_parquet.name)
+        else:
+            logger.warning("  ⚠ vessel_meta: not found at %s", vm_parquet)
     finally:
         con.close()
-    logger.info("  ✓ ais_positions: loaded %d new rows from %d partition(s)", rows, len(parquet_files))
     return rows
 
 

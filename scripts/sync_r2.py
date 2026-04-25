@@ -1237,67 +1237,6 @@ def _ducklake_upload(local_catalog: Path, local_data: Path, bucket: str, fs: obj
     return uploaded
 
 
-def cmd_pull_ais_parquet(args: argparse.Namespace) -> int:
-    """Download DuckLake catalog + Parquet files from maridb-public/ducklake/.
-
-    Downloads catalog.duckdb and any Parquet files not already present locally.
-    Consumers can then either:
-      - ATTACH the catalog: ATTACH 'ducklake:<path>/catalog.duckdb' AS lake
-      - Read Parquet directly: pl.read_parquet('<data-dir>/ducklake/data/**/*.parquet')
-
-    Layout on disk:
-      <data-dir>/ducklake/catalog.duckdb
-      <data-dir>/ducklake/data/<table>/<uuid>.parquet
-    """
-    import pyarrow.fs as pafs
-    import pyarrow.parquet as pq
-
-    data_dir = Path(args.data_dir)
-    catalog_local = data_dir / "ducklake" / "catalog.duckdb"
-    data_local = data_dir / "ducklake" / "data"
-    catalog_local.parent.mkdir(parents=True, exist_ok=True)
-    data_local.mkdir(parents=True, exist_ok=True)
-
-    bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
-    fs = _build_r2_fs()
-    total = 0
-
-    # Always pull catalog (small, contains latest metadata)
-    r2_catalog = f"{bucket}/{_DUCKLAKE_AIS_CATALOG}"
-    try:
-        with fs.open_input_file(r2_catalog) as src:  # type: ignore[attr-defined]
-            catalog_local.write_bytes(src.read())
-        print(f"  catalog ← {r2_catalog}")
-        total += 1
-    except Exception as exc:
-        print(f"No DuckLake catalog found in R2 ({exc}). Run push-ais-parquet first.",
-              file=sys.stderr)
-        return 1
-
-    # Pull Parquet files not already present locally
-    r2_data_prefix = f"{bucket}/{_DUCKLAKE_AIS_DATA}/"
-    try:
-        selector = pafs.FileSelector(r2_data_prefix, recursive=True)
-        remote_files = fs.get_file_info(selector)
-    except Exception as exc:
-        print(f"Error listing {r2_data_prefix}: {exc}", file=sys.stderr)
-        return 1
-
-    for info in remote_files:
-        if info.type != pafs.FileType.File or not info.path.endswith(".parquet"):
-            continue
-        rel = info.path.removeprefix(f"{bucket}/{_DUCKLAKE_AIS_DATA}/")
-        local_path = data_local / rel
-        if local_path.exists() and local_path.stat().st_size == info.size:
-            continue
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        table = pq.read_table(info.path, filesystem=fs)
-        pq.write_table(table, local_path, compression="snappy")
-        print(f"  data/{rel} ({table.num_rows:,} rows)")
-        total += 1
-
-    print(f"\nDone. {total} file(s) downloaded to {data_dir}/ducklake/")
-    return 0
 def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
     """Export new ais_positions rows to date-partitioned Parquet, stage locally, then upload.
 
@@ -1360,29 +1299,58 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
         to_upload = [d for d in dates if d not in existing_r2]
         if not to_upload:
             print(f"  all {len(dates)} date(s) already in R2 - skipping")
-            con.close()
-            continue
-        print(f"  staging + uploading {len(to_upload)} new date(s) ({len(existing_r2)} already in R2) ...")
-        for date_str in to_upload:
-            table = con.execute(
-                "SELECT mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type "
-                "FROM ais_positions WHERE CAST(timestamp AS DATE) = ? ORDER BY mmsi, timestamp",
-                [date_str],
+        else:
+            print(f"  staging + uploading {len(to_upload)} new date(s) ({len(existing_r2)} already in R2) ...")
+            for date_str in to_upload:
+                table = con.execute(
+                    "SELECT mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type "
+                    "FROM ais_positions WHERE CAST(timestamp AS DATE) = ? ORDER BY mmsi, timestamp",
+                    [date_str],
+                ).to_arrow_table()
+                local_path = staging_dir / f"region={region}" / f"date={date_str}" / "positions.parquet"
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                pq.write_table(table, local_path, compression="snappy")
+                r2_key = f"{bucket}/ais/region={region}/date={date_str}/positions.parquet"
+                try:
+                    pq.write_table(table, r2_key, filesystem=fs, compression="snappy")
+                    print(f"    {date_str} ({table.num_rows:,} rows) -> staging + {r2_key}")
+                    total_uploaded += 1
+                except Exception as exc:
+                    print(f"    [error] {date_str}: {exc}", file=sys.stderr)
+
+        # Always push vessel_meta (full snapshot — overwrite on every run)
+        try:
+            vm_count = con.execute("SELECT COUNT(*) FROM vessel_meta").fetchone()[0]
+            vm_table = con.execute(
+                "SELECT mmsi, imo, name, flag, ship_type FROM vessel_meta WHERE mmsi IS NOT NULL"
             ).to_arrow_table()
-            # Write to staging first
-            local_path = staging_dir / f"region={region}" / f"date={date_str}" / "positions.parquet"
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            pq.write_table(table, local_path, compression="snappy")
-            # Upload from staging to R2
-            r2_key = f"{bucket}/ais/region={region}/date={date_str}/positions.parquet"
+        except Exception as exc:
+            print(f"  [skip] vessel_meta: could not read ({exc})", file=sys.stderr)
+            vm_count = 0
+            vm_table = None
+        if vm_count > 0 and vm_table is not None:
+            # Validate schema before upload
             try:
-                pq.write_table(table, r2_key, filesystem=fs, compression="snappy")
-                print(f"    {date_str} ({table.num_rows:,} rows) -> staging + {r2_key}")
+                import polars as _pl
+                from pipelines.storage.schemas import VesselMetaSchema
+                VesselMetaSchema.validate(_pl.from_arrow(vm_table))
+            except Exception as exc:
+                print(f"  [skip] vessel_meta validation failed: {exc}", file=sys.stderr)
+                con.close()
+                continue
+            vm_r2_key = f"{bucket}/vessel_meta/region={region}.parquet"
+            try:
+                pq.write_table(vm_table, vm_r2_key, filesystem=fs, compression="snappy")
+                print(f"  vessel_meta ({vm_count:,} vessels) -> {vm_r2_key}")
                 total_uploaded += 1
             except Exception as exc:
-                print(f"    [error] {date_str}: {exc}", file=sys.stderr)
+                print(f"  [error] vessel_meta: {exc}", file=sys.stderr)
+        else:
+            if vm_table is not None:
+                print(f"  vessel_meta: empty — skipping")
+
         con.close()
-    print(f"Done. {total_uploaded} partition(s) staged to {staging_dir} and uploaded to {bucket}/ais/")
+    print(f"Done. {total_uploaded} file(s) uploaded to {bucket}")
     return 0
 
 
@@ -1437,7 +1405,38 @@ def cmd_pull_ais_parquet(args: argparse.Namespace) -> int:
             total += 1
         except Exception as exc:
             print(f"  [error] {region}/{date_str}: {exc}", file=sys.stderr)
-    print(f"Done. {total} partition(s) downloaded to {data_dir}/ais/")
+
+    # Also pull vessel_meta snapshots for each requested region
+    regions_to_pull = list(regions_filter) if regions_filter else None
+    if regions_to_pull is None:
+        # infer from what exists on R2
+        try:
+            vm_infos = fs.get_file_info(pafs.FileSelector(f"{bucket}/vessel_meta/", recursive=False))
+            regions_to_pull = [
+                Path(i.path).stem.removeprefix("region=")
+                for i in vm_infos
+                if i.type == pafs.FileType.File and i.path.endswith(".parquet")
+            ]
+        except Exception:
+            regions_to_pull = []
+    for region in (regions_to_pull or []):
+        r2_key = f"{bucket}/vessel_meta/region={region}.parquet"
+        local_vm = data_dir / "vessel_meta" / f"region={region}.parquet"
+        try:
+            infos = fs.get_file_info([r2_key])
+            if infos[0].type != pafs.FileType.File:
+                continue
+            if local_vm.exists() and local_vm.stat().st_size == infos[0].size:
+                continue
+            local_vm.parent.mkdir(parents=True, exist_ok=True)
+            vm_table = pq.read_table(r2_key, filesystem=fs)
+            pq.write_table(vm_table, local_vm, compression="snappy")
+            print(f"  vessel_meta/{region} ({vm_table.num_rows:,} vessels) -> {local_vm}")
+            total += 1
+        except Exception as exc:
+            print(f"  [warn] vessel_meta/{region}: {exc}", file=sys.stderr)
+
+    print(f"Done. {total} file(s) downloaded.")
     return 0
 
 

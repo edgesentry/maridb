@@ -69,6 +69,19 @@ class VoyageEvidenceSchema(pa.DataFrameModel):
         coerce = True
 
 
+class VesselMetaSchema(pa.DataFrameModel):
+    """Schema for vessel_meta snapshot uploaded to maridb-public/vessel_meta/."""
+
+    mmsi: Series[str] = pa.Field(nullable=False, description="Maritime Mobile Service Identity")
+    imo: Series[str] = pa.Field(nullable=True, description="IMO vessel number")
+    name: Series[str] = pa.Field(nullable=True, description="Vessel name")
+    flag: Series[str] = pa.Field(nullable=True, description="Flag state (ISO 2-letter code)")
+    ship_type: Series[int] = pa.Field(nullable=True, ge=0, description="AIS ship type code")
+
+    class Config:
+        coerce = True
+
+
 class SanctionsEntitiesSchema(pa.DataFrameModel):
     """Schema for the sanctions entities ingest table."""
 
