@@ -168,17 +168,11 @@ def main() -> int:
 
     report, report_found = _load_report()
 
-    if not report_found:
-        # Backtest report not available — send a pipeline-only status email.
+    if not report_found or (report.get("total_known_cases", 0) == 0 and not report.get("regions")):
+        # No backtest results available — send pipeline-only status email.
+        # This happens when: (a) report file missing, or (b) all regions were
+        # skipped because watchlists have no OFAC-matched vessels yet.
         subject, html_body = _format_pipeline_only_body(run_url, snapshot_info)
-    elif report.get("total_known_cases", 0) == 0 and not report.get("regions"):
-        # Report exists but all regions were skipped (no real watchlist data).
-        print(
-            "All regions were skipped (total_known_cases=0, evaluated regions=[]).\n"
-            "Email suppressed — push real watchlists first:\n"
-            "  uv run python scripts/sync_r2.py push-watchlists"
-        )
-        return 0
     else:
         subject, html_body = _format_body(report, prev_p50, run_url, snapshot_info)
 
