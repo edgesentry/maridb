@@ -21,6 +21,7 @@ dependencies = [
     "scikit-learn>=1.5",
     "numpy>=1.26",
     "pandas>=2.0",
+    "pandera[polars]>=0.21",
 ]
 
 [project.optional-dependencies]
