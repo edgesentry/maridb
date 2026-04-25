@@ -47,7 +47,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --all-extras --group dev
+        run: uv sync --all-extras
 
       # Pull AIS Parquet, watchlists, and GFW EO parquets in parallel from maridb-public.
       # AIS data is uploaded by the local macOS r2sync LaunchAgent (push-ais-parquet).
