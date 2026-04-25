@@ -92,6 +92,37 @@ def _fail(msg: str) -> None:
     logger.error("  ✗ %s", msg)
 
 
+def _validate_step(db_path: str, checks: list[tuple[str, str, int]]) -> bool:
+    """Run SQL row-count checks against the DuckDB after a pipeline step.
+
+    Each check is (label, sql, min_rows). Logs a warning when below threshold
+    but only returns False when a check returns 0 rows (hard failure).
+    Returns True if all checks pass.
+    """
+    ok = True
+    try:
+        con = duckdb.connect(db_path, read_only=True)
+        for label, sql, min_rows in checks:
+            try:
+                row = con.execute(sql).fetchone()
+                count = int(row[0]) if row else 0
+                if count == 0:
+                    logger.error("  ✗ validate [%s]: 0 rows (expected ≥ %d)", label, min_rows)
+                    ok = False
+                elif count < min_rows:
+                    logger.warning("  ⚠ validate [%s]: %d rows (expected ≥ %d)", label, count, min_rows)
+                else:
+                    logger.info("  ✓ validate [%s]: %d rows", label, count)
+            except Exception as e:
+                logger.error("  ✗ validate [%s]: query failed: %s", label, e)
+                ok = False
+        con.close()
+    except Exception as e:
+        logger.error("  ✗ validate: could not open DB: %s", e)
+        ok = False
+    return ok
+
+
 def _seed_dummy_vessels(db_path: str) -> None:
     """Patch real sanctioned vessels into DuckDB so CI known-case floor is met."""
     mmsi_list = ", ".join(f"'{m}'" for m in _DUMMY_MMSIS)
@@ -168,7 +199,12 @@ def step_ingest(region: RegionConfig, gdelt_days: int = 3) -> bool:
             _fail(f"{label}: {result.stderr.strip().splitlines()[-1] if result.stderr.strip() else 'error'}")
             return False
         _ok(label)
-    return True
+
+    return _validate_step(region.db_path, [
+        ("ais_positions",     "SELECT count(*) FROM ais_positions",     1),
+        ("vessel_meta",       "SELECT count(*) FROM vessel_meta",        1),
+        ("sanctions_entities","SELECT count(*) FROM sanctions_entities", 100),
+    ])
 
 
 def step_features(region: RegionConfig, seed_dummy: bool = False) -> bool:
@@ -191,7 +227,11 @@ def step_features(region: RegionConfig, seed_dummy: bool = False) -> bool:
     if seed_dummy:
         _seed_dummy_vessels(region.db_path)
 
-    return True
+    return _validate_step(region.db_path, [
+        ("vessel_features",      "SELECT count(*) FROM vessel_features",      1),
+        ("vessel_features.mmsi", "SELECT count(*) FROM vessel_features WHERE mmsi IS NOT NULL", 1),
+        ("anomaly_scores",       "SELECT count(*) FROM vessel_features WHERE ais_gap_count_30d IS NOT NULL", 1),
+    ])
 
 
 def step_score(region: RegionConfig) -> bool:
@@ -213,6 +253,25 @@ def step_score(region: RegionConfig) -> bool:
             _fail(f"{label}: {result.stderr.strip().splitlines()[-1] if result.stderr.strip() else 'error'}")
             return False
         _ok(label)
+
+    watchlist_path = Path(f"data/processed/{region.watchlist_key}")
+    if watchlist_path.exists():
+        try:
+            import polars as pl
+            wl = pl.read_parquet(watchlist_path)
+            if wl.height == 0:
+                logger.warning("  ⚠ validate [watchlist]: 0 rows written")
+            elif "composite_score" not in wl.columns:
+                logger.error("  ✗ validate [watchlist]: missing composite_score column")
+                return False
+            else:
+                logger.info("  ✓ validate [watchlist]: %d candidates, composite_score present", wl.height)
+        except Exception as e:
+            logger.error("  ✗ validate [watchlist]: %s", e)
+            return False
+    else:
+        logger.warning("  ⚠ validate [watchlist]: file not found at %s", watchlist_path)
+
     return True
 
 

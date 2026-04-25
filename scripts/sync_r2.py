@@ -778,15 +778,15 @@ def cmd_push_watchlists(args: argparse.Namespace) -> int:
     data_dir = Path(args.data_dir)
     r2_path = f"{bucket}/{_WATCHLISTS_R2_KEY}"
 
-    # *_watchlist.parquet already matches candidate_watchlist.parquet; use a
-    # set to avoid duplicates when both patterns hit the same file.
+    # Search both data_dir root and data_dir/score/ (where run_pipeline.py writes them).
+    # Use rglob to find all *_watchlist.parquet recursively; arcname=f.name in the zip
+    # ensures they all extract to the top level of data_dir on pull.
     seen: set[Path] = set()
     watchlist_files = []
-    for pattern in ["*_watchlist.parquet", "candidate_watchlist.parquet"]:
-        for f in sorted(data_dir.glob(pattern)):
-            if f not in seen:
-                seen.add(f)
-                watchlist_files.append(f)
+    for f in sorted(data_dir.rglob("*_watchlist.parquet")):
+        if f not in seen:
+            seen.add(f)
+            watchlist_files.append(f)
 
     if not watchlist_files:
         print(
