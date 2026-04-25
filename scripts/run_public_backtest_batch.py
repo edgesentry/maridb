@@ -75,6 +75,7 @@ def _run_pipeline_for_region(
         cmd.extend(["--stream-duration", str(stream_duration)])
     if seed_dummy:
         cmd.append("--seed-dummy")
+    cmd.append("--skip-distribute")  # backtest only needs scores, not app bucket distribution
     if marine_cadastre_year is not None and region == "persiangulf":
         cmd.extend(["--marine-cadastre-year", str(marine_cadastre_year)])
 
