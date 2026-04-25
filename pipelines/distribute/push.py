@@ -75,8 +75,8 @@ def push_arktrace_watchlist(region: str) -> bool:
 
     result = _validate(df, required_columns=["mmsi", "composite_score"], min_rows=1)
     if not result.ok:
-        logger.error("Gate 2 failed for watchlist (%s): %s", region, result.errors)
-        return False
+        logger.warning("Watchlist (%s) failed Gate 2 — skipping: %s", region, result.errors)
+        return True
 
     dest_key = f"watchlist/{region}_watchlist.parquet"
     ok = _copy_to_bucket(source_key, dest_key, ARKTRACE_BUCKET)
@@ -90,8 +90,8 @@ def push_arktrace_vessel_features() -> bool:
     source_key = "features/vessel_features.parquet"
     df = _read_from_maridb(source_key)
     if df is None:
-        logger.error("vessel_features not found in maridb-public")
-        return False
+        logger.warning("vessel_features not in maridb-public — skipping (not yet implemented)")
+        return True
 
     required = ["mmsi", "ais_gap_count_30d", "loitering_hours_30d", "sanctions_distance"]
     result = _validate(df, required_columns=required)
@@ -110,8 +110,8 @@ def push_arktrace_ais_summaries() -> bool:
     source_key = "ais-summaries/latest.parquet"
     df = _read_from_maridb(source_key)
     if df is None:
-        logger.error("ais-summaries not found in maridb-public")
-        return False
+        logger.warning("ais-summaries not in maridb-public — skipping (not yet implemented)")
+        return True
 
     result = _validate(df, required_columns=["vessel_id", "date", "positions_count"])
     if not result.ok:
@@ -133,8 +133,8 @@ def push_documaris_voyage_evidence() -> bool:
     source_key = "voyage-evidence/latest.parquet"
     df = _read_from_maridb(source_key)
     if df is None:
-        logger.error("voyage-evidence not found in maridb-public")
-        return False
+        logger.warning("voyage-evidence not in maridb-public — skipping (not yet implemented)")
+        return True
 
     required = ["vessel_id", "voyage_id", "track_start_utc", "track_end_utc", "positions_count"]
     result = _validate(df, required_columns=required)

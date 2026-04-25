@@ -58,9 +58,12 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: auto
         run: |
-          # AIS Parquet partitions written by local macOS push-ais-parquet job
+          # AIS Parquet partitions written by local macOS push-ais-parquet job.
+          # --days 60: pipeline needs 30-day rolling windows; 60 days gives headroom
+          # without downloading unbounded history on every ephemeral CI runner.
           uv run python scripts/sync_r2.py pull-ais-parquet \
-            --regions japansea,blacksea,middleeast,singapore,europe &
+            --regions japansea,blacksea,middleeast,singapore,europe \
+            --days 60 &
           PID_AIS=$!
           # Watchlists from previous pipeline run
           uv run python scripts/sync_r2.py pull-watchlists &
