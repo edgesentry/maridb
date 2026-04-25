@@ -1,5 +1,6 @@
 .env
 .env.*
+config/launchagents/*.local.plist
 *.parquet
 *.csv
 *.jsonl
