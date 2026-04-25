@@ -1,0 +1,51 @@
+name: GDELT Ingest
+
+# Ingests the last 7 days of GDELT events into gdelt.lance and pushes to R2.
+# The daily data-publish pipeline pulls gdelt.lance.zip instead of re-ingesting
+# on every run, avoiding concurrent LanceDB write locks across parallel pipelines.
+#
+# Triggers:
+#   - Weekly Sunday 23:00 UTC (before Monday data-publish at 01:00)
+#   - Manual dispatch
+
+on:
+  schedule:
+    - cron: '0 23 * * 0'  # weekly Sunday 23:00 UTC
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: gdelt-ingest
+  cancel-in-progress: true
+
+jobs:
+  ingest:
+    name: Ingest GDELT + push to R2
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      MARIDB_DATA_DIR: data/processed
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Ingest GDELT events (last 7 days)
+        run: uv run python -m pipelines.ingest.gdelt --days 7
+
+      - name: Push gdelt.lance to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+        run: uv run python scripts/sync_r2.py push-gdelt --force
