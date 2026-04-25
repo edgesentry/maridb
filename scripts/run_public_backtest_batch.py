@@ -68,7 +68,6 @@ def _get_watchlist_path(region: str) -> Path:
 def _run_pipeline_for_region(
     scripts_dir: Path,
     region: str,
-    gdelt_days: int,
     stream_duration: int,
     seed_dummy: bool,
     marine_cadastre_year: int | None,
@@ -79,8 +78,6 @@ def _run_pipeline_for_region(
         "--region",
         region,
         "--non-interactive",
-        "--gdelt-days",
-        str(gdelt_days),
     ]
     if stream_duration > 0:
         cmd.extend(["--stream-duration", str(stream_duration)])
@@ -243,7 +240,8 @@ def main() -> None:
         default="singapore,japan,middleeast,europe,persiangulf,gulfofguinea,gulfofaden,gulfofmexico",
         help="Comma-separated region list",
     )
-    parser.add_argument("--gdelt-days", type=int, default=14)
+    parser.add_argument("--gdelt-days", type=int, default=14,
+                        help="Deprecated — GDELT is now ingested via gdelt-ingest.yml; ignored")
     parser.add_argument("--stream-duration", type=int, default=0)
     parser.add_argument("--seed-dummy", action="store_true")
     parser.add_argument(
@@ -325,7 +323,7 @@ def main() -> None:
 
     regions = [r.strip() for r in args.regions.split(",") if r.strip()]
     for region in regions:
-        if region not in WATCHLIST_BY_REGION:
+        if region not in WATCHLIST_BY_REGION:  # type: ignore[operator]
             raise SystemExit(f"Unsupported region: {region}")
         if args.skip_pipeline:
             print(
@@ -336,7 +334,6 @@ def main() -> None:
             _run_pipeline_for_region(
                 scripts_dir=scripts_dir,
                 region=region,
-                gdelt_days=args.gdelt_days,
                 stream_duration=args.stream_duration,
                 seed_dummy=args.seed_dummy,
                 marine_cadastre_year=args.marine_cadastre_year,
