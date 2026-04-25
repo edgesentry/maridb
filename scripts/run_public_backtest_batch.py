@@ -346,9 +346,13 @@ def main() -> None:
     for region in regions:
         watchlist_path = WATCHLIST_BY_REGION[region].resolve()
         if not watchlist_path.exists():
-            print(f"[skip] {region}: watchlist not found at {watchlist_path}", flush=True)
-            skipped_regions.append(region)
-            continue
+            print(
+                f"[error] {region}: watchlist not found at {watchlist_path}\n"
+                "  Run the pipeline first or pull watchlists from R2:\n"
+                "  uv run python scripts/sync_r2.py pull-watchlists",
+                flush=True,
+            )
+            sys.exit(1)
         watchlist = pl.read_parquet(watchlist_path)
         if watchlist.height < args.min_watchlist_size:
             print(
@@ -416,8 +420,9 @@ def main() -> None:
 
     if not windows:
         print(
-            "All regions were skipped — no backtest windows to evaluate. "
-            "Run a real AIS pipeline for at least one region before running this batch.",
+            "[error] All regions were skipped — no backtest windows to evaluate.\n"
+            "  Watchlists exist but have fewer vessels than --min-watchlist-size.\n"
+            "  Run a real AIS pipeline for at least one region before running this batch.",
             flush=True,
         )
         summary = {
@@ -439,7 +444,7 @@ def main() -> None:
         summary_path = (project_root / args.summary_out).resolve()
         summary_path.write_text(json.dumps(summary, indent=2))
         print(json.dumps(summary, indent=2))
-        return
+        sys.exit(1)
 
     report_path = (project_root / args.report_out).resolve()
     report = run_backtest(str(manifest_path), str(report_path), [25, 50, 100, 200])
