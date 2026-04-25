@@ -1481,21 +1481,72 @@ def cmd_pull_gfw_eo(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
-    """Export ais_positions from local .duckdb to Parquet and upload to maridb-public.
+_DUCKLAKE_AIS_CATALOG = "ducklake/catalog.duckdb"
+_DUCKLAKE_AIS_DATA = "ducklake/data"
 
-    For each region DB, exports ais_positions partitioned by date to:
-      maridb-public/ais/region=<region>/date=YYYY-MM-DD/positions.parquet
 
-    Only dates not yet present in R2 are uploaded (incremental). The local .duckdb
-    remains as the source of truth; this command never deletes local data.
-    """
-    import duckdb as _duckdb
+def _ducklake_upload(local_catalog: Path, local_data: Path, bucket: str, fs: object) -> int:
+    """Upload DuckLake catalog + changed Parquet files to R2. Returns upload count."""
     import pyarrow.fs as pafs
     import pyarrow.parquet as pq
-    import tempfile
+
+    uploaded = 0
+
+    # Upload catalog.duckdb
+    r2_catalog_key = f"{bucket}/{_DUCKLAKE_AIS_CATALOG}"
+    with open(local_catalog, "rb") as fh:
+        with fs.open_output_stream(r2_catalog_key) as out:  # type: ignore[attr-defined]
+            out.write(fh.read())
+    print(f"  catalog → {r2_catalog_key}")
+    uploaded += 1
+
+    # Upload Parquet files — skip files already in R2 with same size
+    existing: dict[str, int] = {}  # r2_key → size_bytes
+    try:
+        selector = pafs.FileSelector(f"{bucket}/{_DUCKLAKE_AIS_DATA}/", recursive=True)
+        for info in fs.get_file_info(selector):
+            if info.type == pafs.FileType.File:
+                existing[info.path] = info.size
+    except Exception:
+        pass
+
+    for parquet_file in sorted(local_data.rglob("*.parquet")):
+        rel = parquet_file.relative_to(local_data)
+        r2_key = f"{bucket}/{_DUCKLAKE_AIS_DATA}/{rel}"
+        local_size = parquet_file.stat().st_size
+        if existing.get(r2_key) == local_size:
+            continue  # unchanged
+        table = pq.read_table(parquet_file)
+        pq.write_table(table, r2_key, filesystem=fs, compression="snappy")
+        print(f"  data/{rel} ({table.num_rows:,} rows) → {r2_key}")
+        uploaded += 1
+
+    return uploaded
+
+
+def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
+    """Append new ais_positions rows to DuckLake catalog and upload to maridb-public.
+
+    For each region DB:
+      1. Query local .duckdb for rows newer than the catalog's latest timestamp
+      2. Append to DuckLake (catalog.duckdb + data/ Parquet files)
+      3. CHECKPOINT to materialise clean Parquet
+      4. Upload catalog + changed Parquet files to maridb-public/ducklake/
+
+    Layout on R2:
+      maridb-public/ducklake/catalog.duckdb
+      maridb-public/ducklake/data/<table>/<uuid>.parquet
+
+    The local .duckdb remains as the source of truth and is never deleted.
+    """
+    import duckdb as _duckdb
+
+    from pipelines.storage.ducklake import checkpoint, write_table
 
     data_dir = Path(args.data_dir)
+    catalog_path = data_dir / "ducklake" / "catalog.duckdb"
+    ducklake_data = data_dir / "ducklake" / "data"
+
     regions: list[str] | None = (
         [r.strip() for r in args.regions.split(",")] if args.regions else None
     )
@@ -1504,142 +1555,141 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
         print("No eligible AIS .duckdb files found.", file=sys.stderr)
         return 1
 
-    fs = _build_r2_fs()
-    bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
-    total_uploaded = 0
-
+    total_rows = 0
     for db_path in candidates:
-        # Resolve region name from filename stem (e.g. singapore.duckdb → singapore)
         stem = db_path.stem
         region = next((r for r, p in _REGION_PREFIX.items() if p == stem), stem)
 
         print(f"\n[{region}] Reading {db_path.name} ...")
         try:
-            con = _duckdb.connect(str(db_path), read_only=True)
-            row_count = con.execute("SELECT COUNT(*) FROM ais_positions").fetchone()[0]
+            src = _duckdb.connect(str(db_path), read_only=True)
         except Exception as exc:
             print(f"  [skip] cannot open DB: {exc}", file=sys.stderr)
             continue
 
-        if row_count == 0:
-            print(f"  [skip] ais_positions is empty")
+        # Find the last timestamp already written to the catalog for this region
+        last_ts: str | None = None
+        if catalog_path.exists():
+            try:
+                cat = _duckdb.connect(":memory:")
+                cat.execute("INSTALL ducklake; LOAD ducklake")
+                cat.execute(
+                    f"ATTACH 'ducklake:{catalog_path.resolve()}' AS lake "
+                    f"(DATA_PATH '{ducklake_data.resolve()}')"
+                )
+                row = cat.execute(
+                    "SELECT MAX(timestamp) FROM lake.ais_positions WHERE region = ?",
+                    [region],
+                ).fetchone()
+                last_ts = str(row[0]) if row and row[0] else None
+                cat.close()
+            except Exception:
+                pass
+
+        if last_ts:
+            df = src.execute(
+                "SELECT ?, mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type "
+                "FROM ais_positions WHERE timestamp > ? ORDER BY timestamp",
+                [region, last_ts],
+            ).pl()
+        else:
+            df = src.execute(
+                "SELECT ?, mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type "
+                "FROM ais_positions ORDER BY timestamp",
+                [region],
+            ).pl()
+
+        df = df.rename({"main.?": "region"}) if "main.?" in df.columns else df
+        # DuckDB parameter placeholder lands as column "?" — rename
+        if "?" in df.columns:
+            df = df.rename({"?": "region"})
+
+        src.close()
+
+        if df.is_empty():
+            print(f"  no new rows since {last_ts} — skipping")
             continue
 
-        # Get distinct dates in the DB
-        dates = [
-            r[0].strftime("%Y-%m-%d")
-            for r in con.execute(
-                "SELECT DISTINCT CAST(timestamp AS DATE) AS d FROM ais_positions ORDER BY d"
-            ).fetchall()
-        ]
-        print(f"  {row_count:,} rows across {len(dates)} date(s)")
+        print(f"  {len(df):,} new rows (since {last_ts or 'beginning'})")
+        write_table(df, "ais_positions", catalog_path, ducklake_data, replace=False)
+        total_rows += len(df)
 
-        # Check which dates already exist in R2 (incremental upload)
-        r2_prefix = f"{bucket}/ais/region={region}/"
-        existing_dates: set[str] = set()
-        try:
-            selector = pafs.FileSelector(r2_prefix, recursive=True)
-            for info in fs.get_file_info(selector):
-                # path: maridb-public/ais/region=singapore/date=2026-04-25/positions.parquet
-                parts = info.path.split("/")
-                for part in parts:
-                    if part.startswith("date="):
-                        existing_dates.add(part.removeprefix("date="))
-        except Exception:
-            pass  # prefix doesn't exist yet — upload all
+    if total_rows == 0:
+        print("\nAll regions up-to-date — nothing to upload.")
+        return 0
 
-        dates_to_upload = [d for d in dates if d not in existing_dates]
-        if not dates_to_upload:
-            print(f"  all {len(dates)} date(s) already in R2 — skipping")
-            con.close()
-            continue
+    print(f"\nCheckpointing DuckLake ({total_rows:,} new rows) ...")
+    parquet_files = checkpoint(catalog_path, ducklake_data)
+    print(f"  {len(parquet_files)} Parquet file(s) materialised")
 
-        print(f"  uploading {len(dates_to_upload)} new date(s) "
-              f"({len(existing_dates)} already in R2) ...")
-
-        with tempfile.TemporaryDirectory() as tmp:
-            for date_str in dates_to_upload:
-                df = con.execute(
-                    "SELECT mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type "
-                    "FROM ais_positions WHERE CAST(timestamp AS DATE) = ? "
-                    "ORDER BY mmsi, timestamp",
-                    [date_str],
-                ).arrow()
-
-                r2_key = f"{bucket}/ais/region={region}/date={date_str}/positions.parquet"
-                try:
-                    pq.write_table(df, r2_key, filesystem=fs, compression="snappy")
-                    print(f"    {date_str} ({df.num_rows:,} rows) → {r2_key}")
-                    total_uploaded += 1
-                except Exception as exc:
-                    print(f"    [error] {date_str}: {exc}", file=sys.stderr)
-
-        con.close()
-
-    print(f"\nDone. {total_uploaded} Parquet partition(s) uploaded to {bucket}/ais/")
+    print(f"\nUploading to {os.getenv('S3_BUCKET', _DEFAULT_BUCKET)}/ducklake/ ...")
+    fs = _build_r2_fs()
+    bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
+    n = _ducklake_upload(catalog_path, ducklake_data, bucket, fs)
+    print(f"\nDone. {n} file(s) uploaded.")
     return 0
 
 
 def cmd_pull_ais_parquet(args: argparse.Namespace) -> int:
-    """Download AIS Parquet partitions from maridb-public/ais/ to local data dir.
+    """Download DuckLake catalog + Parquet files from maridb-public/ducklake/.
 
-    Downloads only the last --days days (default 60). Skips partitions already
-    present locally. Output layout:
-      <data-dir>/ais/region=<region>/date=YYYY-MM-DD/positions.parquet
+    Downloads catalog.duckdb and any Parquet files not already present locally.
+    Consumers can then either:
+      - ATTACH the catalog: ATTACH 'ducklake:<path>/catalog.duckdb' AS lake
+      - Read Parquet directly: pl.read_parquet('<data-dir>/ducklake/data/**/*.parquet')
+
+    Layout on disk:
+      <data-dir>/ducklake/catalog.duckdb
+      <data-dir>/ducklake/data/<table>/<uuid>.parquet
     """
     import pyarrow.fs as pafs
     import pyarrow.parquet as pq
-    from datetime import date, timedelta
 
     data_dir = Path(args.data_dir)
-    bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
-    regions_filter: set[str] | None = (
-        {r.strip() for r in args.regions.split(",")} if args.regions else None
-    )
-    cutoff = (date.today() - timedelta(days=args.days)).isoformat()
+    catalog_local = data_dir / "ducklake" / "catalog.duckdb"
+    data_local = data_dir / "ducklake" / "data"
+    catalog_local.parent.mkdir(parents=True, exist_ok=True)
+    data_local.mkdir(parents=True, exist_ok=True)
 
+    bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
     fs = _build_r2_fs()
     total = 0
 
+    # Always pull catalog (small, contains latest metadata)
+    r2_catalog = f"{bucket}/{_DUCKLAKE_AIS_CATALOG}"
     try:
-        selector = pafs.FileSelector(f"{bucket}/ais/", recursive=True)
-        all_files = fs.get_file_info(selector)
+        with fs.open_input_file(r2_catalog) as src:  # type: ignore[attr-defined]
+            catalog_local.write_bytes(src.read())
+        print(f"  catalog ← {r2_catalog}")
+        total += 1
     except Exception as exc:
-        print(f"Error listing {bucket}/ais/: {exc}", file=sys.stderr)
+        print(f"No DuckLake catalog found in R2 ({exc}). Run push-ais-parquet first.",
+              file=sys.stderr)
         return 1
 
-    for info in all_files:
-        if not info.path.endswith(".parquet"):
-            continue
-        # path: maridb-public/ais/region=singapore/date=2026-04-25/positions.parquet
-        parts = info.path.split("/")
-        region_part = next((p for p in parts if p.startswith("region=")), None)
-        date_part = next((p for p in parts if p.startswith("date=")), None)
-        if not region_part or not date_part:
-            continue
+    # Pull Parquet files not already present locally
+    r2_data_prefix = f"{bucket}/{_DUCKLAKE_AIS_DATA}/"
+    try:
+        selector = pafs.FileSelector(r2_data_prefix, recursive=True)
+        remote_files = fs.get_file_info(selector)
+    except Exception as exc:
+        print(f"Error listing {r2_data_prefix}: {exc}", file=sys.stderr)
+        return 1
 
-        region = region_part.removeprefix("region=")
-        date_str = date_part.removeprefix("date=")
-
-        if regions_filter and region not in regions_filter:
+    for info in remote_files:
+        if info.type != pafs.FileType.File or not info.path.endswith(".parquet"):
             continue
-        if date_str < cutoff:
+        rel = info.path.removeprefix(f"{bucket}/{_DUCKLAKE_AIS_DATA}/")
+        local_path = data_local / rel
+        if local_path.exists() and local_path.stat().st_size == info.size:
             continue
-
-        local_path = data_dir / "ais" / f"region={region}" / f"date={date_str}" / "positions.parquet"
-        if local_path.exists():
-            continue
-
         local_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            table = pq.read_table(info.path, filesystem=fs)
-            pq.write_table(table, local_path, compression="snappy")
-            print(f"  {region}/{date_str} ({table.num_rows:,} rows) → {local_path}")
-            total += 1
-        except Exception as exc:
-            print(f"  [error] {region}/{date_str}: {exc}", file=sys.stderr)
+        table = pq.read_table(info.path, filesystem=fs)
+        pq.write_table(table, local_path, compression="snappy")
+        print(f"  data/{rel} ({table.num_rows:,} rows)")
+        total += 1
 
-    print(f"\nDone. {total} partition(s) downloaded to {data_dir}/ais/")
+    print(f"\nDone. {total} file(s) downloaded to {data_dir}/ducklake/")
     return 0
 
 
