@@ -104,5 +104,5 @@ class TestMissingWatchlistFails:
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
 
-        resolved = mod._watchlist_path("singapore")
+        resolved = mod._get_watchlist_path("singapore")
         assert resolved == score_path, f"Expected score/ path, got {resolved}"
