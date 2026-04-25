@@ -86,8 +86,8 @@ def _seed_causal_data(db_path: str) -> None:
         # Base timestamps for control vessels (2 gaps each period, uniform)
         # for treated vessels: 2 gaps pre, 12 gaps post (large treatment effect)
 
-        _pre_ann = datetime(2019, 4, 8, tzinfo=UTC)  # day before pre-window end
-        _post_ann = datetime(2019, 5, 9, tzinfo=UTC)  # day after announcement
+        pre_ann = datetime(2019, 4, 8, tzinfo=UTC)   # day before pre-window end
+        post_ann = datetime(2019, 5, 9, tzinfo=UTC)  # day after announcement
 
         def _insert_positions(mmsi: str, base: datetime, gap_hours: float, n_obs: int):
             """Insert n_obs observations with regular gap_hours spacing."""
@@ -107,13 +107,13 @@ def _seed_causal_data(db_path: str) -> None:
 
         # Pre-period: all vessels, 2 gaps each (gap = 8h so each counts once)
         for mmsi in ["TR1", "TR2", "TR3", "TR4", "CT1", "CT2", "CT3", "CT4"]:
-            _insert_positions(mmsi, datetime(2019, 4, 8, tzinfo=UTC), 8.0, 3)
+            _insert_positions(mmsi, pre_ann, 8.0, 3)
 
         # Post-period: treated get 12 gaps, control get 2 gaps
         for mmsi in ["TR1", "TR2", "TR3", "TR4"]:
-            _insert_positions(mmsi, datetime(2019, 5, 8, tzinfo=UTC), 7.0, 13)
+            _insert_positions(mmsi, post_ann, 7.0, 13)
         for mmsi in ["CT1", "CT2", "CT3", "CT4"]:
-            _insert_positions(mmsi, datetime(2019, 5, 8, tzinfo=UTC), 8.0, 3)
+            _insert_positions(mmsi, post_ann, 8.0, 3)
 
     finally:
         con.close()
@@ -466,9 +466,7 @@ def test_calibrated_weight_feeds_composite(tmp_db):
 
     # Redistribute remaining weight: keep anomaly + identity proportional
     remaining = 1.0 - calibrated_w
-    w_anomaly = round(remaining * 0.67, 3)
     w_identity = round(remaining * 0.33, 3)
-    # Ensure they sum to 1.0
     w_anomaly = round(1.0 - calibrated_w - w_identity, 3)
 
     composite = compute_composite_scores(

@@ -181,11 +181,13 @@ def load_to_duckdb(records: list[dict], db_path: str = DEFAULT_DB_PATH) -> int:
     if not rows:
         return 0
 
-    pos_df = pl.DataFrame(rows)  # noqa: F841 — referenced by DuckDB
-    meta_df = pl.DataFrame(meta_rows).unique(subset=["mmsi"], keep="first")  # noqa: F841
+    pos_df = pl.DataFrame(rows)
+    meta_df = pl.DataFrame(meta_rows).unique(subset=["mmsi"], keep="first")
 
     con = duckdb.connect(db_path)
     try:
+        con.register("pos_df", pos_df)
+        con.register("meta_df", meta_df)
         before = con.execute("SELECT count(*) FROM ais_positions").fetchone()[0]  # type: ignore[index]
         con.execute("""
             INSERT OR IGNORE INTO ais_positions

@@ -88,7 +88,7 @@ def _flush_batch(batch: list[dict], db_path: str) -> int:
 
     import polars as pl
 
-    df = pl.DataFrame(batch).with_columns(  # noqa: F841 — referenced by DuckDB via `FROM df`
+    df = pl.DataFrame(batch).with_columns(
         pl.col("nav_status").cast(pl.Int8),
         pl.col("ship_type").cast(pl.Int8),
         pl.col("sog").cast(pl.Float32),
@@ -97,6 +97,7 @@ def _flush_batch(batch: list[dict], db_path: str) -> int:
 
     con = duckdb.connect(db_path)
     try:
+        con.register("df", df)
         before = con.execute("SELECT count(*) FROM ais_positions").fetchone()[0]  # type: ignore[index]
         con.execute("""
             INSERT OR IGNORE INTO ais_positions

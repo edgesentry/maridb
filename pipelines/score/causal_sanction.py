@@ -156,7 +156,6 @@ def _ols_hc3(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.n
     XtX_inv = np.linalg.pinv(X.T @ X)
     beta = XtX_inv @ X.T @ y
     resid = y - X @ beta
-    n, k = X.shape
     # HC3: leverage-adjusted residuals
     H = X @ XtX_inv @ X.T  # hat matrix (n × n)
     h = np.diag(H)  # leverage scores

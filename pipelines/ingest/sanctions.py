@@ -148,7 +148,7 @@ def parse_ftm_entity(entity: dict) -> dict | None:
 
 def _flush_batch(con: duckdb.DuckDBPyConnection, batch: list[dict]) -> int:
     """INSERT OR IGNORE *batch* rows into sanctions_entities. Returns inserted count."""
-    df = pl.DataFrame(  # noqa: F841 — referenced by DuckDB via `FROM df`
+    df = pl.DataFrame(
         batch,
         schema={
             "entity_id": pl.Utf8,
@@ -160,6 +160,7 @@ def _flush_batch(con: duckdb.DuckDBPyConnection, batch: list[dict]) -> int:
             "list_source": pl.Utf8,
         },
     )
+    con.register("df", df)
     before = con.execute("SELECT count(*) FROM sanctions_entities").fetchone()[0]  # type: ignore[index]
     con.execute("""
         INSERT OR IGNORE INTO sanctions_entities

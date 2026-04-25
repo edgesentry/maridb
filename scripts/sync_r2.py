@@ -159,7 +159,6 @@ def _resolve_default_data_dir() -> str:
 
 
 _DEFAULT_DATA_DIR = _resolve_default_data_dir()
-_DEFAULT_REGION = "singapore"
 _DEFAULT_KEEP = 3  # ~2 GB/snapshot × 3 ≈ 6 GB; well within the 10 GB free tier
 _DEFAULT_BUCKET = "maridb-public"
 _DEFAULT_ENDPOINT = "https://b8a0b09feb89390fb6e8cf4ef9294f48.r2.cloudflarestorage.com"
@@ -173,21 +172,11 @@ _GDELT_R2_KEY = "gdelt.lance.zip"  # single zip for gdelt
 _SANCTIONS_DB_R2_KEY = "public_eval.duckdb"  # OpenSanctions DB; separate from rotation zip
 _WATCHLISTS_R2_KEY = "watchlists.zip"  # lightweight bundle of *_watchlist.parquet files
 _DEMO_R2_KEY = "demo.zip"  # fixed-key public demo bundle; overwritten on every push-demo
-_REVIEWS_MERGED_PREFIX = "reviews/merged"  # server-merged output (read by OSS clients)
 
-# DuckLake catalog keys — public bucket (root) and private bucket (outputs/ prefix)
+# DuckLake catalog keys — public bucket (root)
 # catalog.duckdb is a fixed-key file overwritten on every push-ducklake-* run.
 _DUCKLAKE_CATALOG_KEY = "catalog.duckdb"  # public: maridb-public/catalog.duckdb
 _DUCKLAKE_DATA_PREFIX = "data/"  # public: maridb-public/data/...
-_DUCKLAKE_PRIVATE_PREFIX = "outputs/"  # private: arktrace-private-capvista/outputs/
-
-# Private files that are also pushed to arktrace-private-capvista/outputs/
-# These are the full pipeline outputs available to authenticated Cap Vista reviewers.
-_PRIVATE_OUTPUT_FILES = [
-    "candidate_watchlist.parquet",
-    "causal_effects.parquet",
-    "validation_metrics.json",
-]
 
 # Private bucket for proprietary customer feeds (e.g. Cap Vista MPOL data).
 # Uses separate credentials so it is never confused with the public bucket.
@@ -1022,7 +1011,8 @@ def cmd_push_ducklake_public(args: argparse.Namespace) -> int:
         f"  {_PUBLIC_BASE_URL}/{_DUCKLAKE_DATA_PREFIX}..."
     )
     return 0
-_AIS_DBS_R2_PREFIX = "ais-dbs/"  # private bucket sub-prefix for raw AIS DB backups
+
+
 _GFW_EO_R2_PREFIX = "gfw-eo/"  # private bucket sub-prefix for pre-fetched GFW EO parquets
 _GEBCO_MASKS_R2_PREFIX = "gebco-masks/"  # private bucket sub-prefix for GEBCO depth masks
 _AIS_DB_MIN_SIZE_BYTES = 1_048_576  # skip placeholder DBs smaller than 1 MB

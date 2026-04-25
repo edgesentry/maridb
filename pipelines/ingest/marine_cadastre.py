@@ -150,7 +150,8 @@ def load_csv_to_duckdb(
     con = duckdb.connect(db_path)
     try:
         pos_cols = ["mmsi", "timestamp", "lat", "lon", "sog", "cog", "nav_status", "ship_type"]
-        pos_df = df.select([c for c in pos_cols if c in df.columns])  # noqa: F841 — referenced by DuckDB via `FROM pos_df`
+        pos_df = df.select([c for c in pos_cols if c in df.columns])
+        con.register("pos_df", pos_df)
         before = con.execute("SELECT count(*) FROM ais_positions").fetchone()[0]  # type: ignore[index]
         con.execute("""
             INSERT OR IGNORE INTO ais_positions
@@ -163,9 +164,8 @@ def load_csv_to_duckdb(
         meta_src_cols = ["mmsi", "vessel_name", "imo", "flag", "ship_type", "gross_tonnage"]
         meta_avail = [c for c in meta_src_cols if c in df.columns]
         if len(meta_avail) > 1:
-            meta_df = (  # noqa: F841 — referenced by DuckDB via `FROM meta_df`
-                df.select(meta_avail).unique(subset=["mmsi"], keep="first")
-            )
+            meta_df = df.select(meta_avail).unique(subset=["mmsi"], keep="first")
+            con.register("meta_df", meta_df)
             con.execute(
                 """
                 INSERT OR IGNORE INTO vessel_meta (mmsi, imo, name, flag, ship_type, gross_tonnage)
