@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 import polars as pl
-import pytest
 
 
 def _run_backtest(args: list[str], env_extra: dict | None = None) -> subprocess.CompletedProcess:
