@@ -92,23 +92,27 @@ def _fail(msg: str) -> None:
     logger.error("  ✗ %s", msg)
 
 
-def _validate_step(db_path: str, checks: list[tuple[str, str, int]]) -> bool:
+def _validate_step(db_path: str, checks: list[tuple[str, str, int, bool]]) -> bool:
     """Run SQL row-count checks against the DuckDB after a pipeline step.
 
-    Each check is (label, sql, min_rows). Logs a warning when below threshold
-    but only returns False when a check returns 0 rows (hard failure).
-    Returns True if all checks pass.
+    Each check is (label, sql, min_rows, required).
+    - required=True:  0 rows → error, aborts pipeline
+    - required=False: 0 rows → warning only (e.g. AIS data absent in backtest context)
+    - count < min_rows (but > 0) → warning in both cases
     """
     ok = True
     try:
         con = duckdb.connect(db_path, read_only=True)
-        for label, sql, min_rows in checks:
+        for label, sql, min_rows, required in checks:
             try:
                 row = con.execute(sql).fetchone()
                 count = int(row[0]) if row else 0
                 if count == 0:
-                    logger.error("  ✗ validate [%s]: 0 rows (expected ≥ %d)", label, min_rows)
-                    ok = False
+                    if required:
+                        logger.error("  ✗ validate [%s]: 0 rows (expected ≥ %d)", label, min_rows)
+                        ok = False
+                    else:
+                        logger.warning("  ⚠ validate [%s]: 0 rows", label)
                 elif count < min_rows:
                     logger.warning("  ⚠ validate [%s]: %d rows (expected ≥ %d)", label, count, min_rows)
                 else:
@@ -201,9 +205,9 @@ def step_ingest(region: RegionConfig, gdelt_days: int = 3) -> bool:
         _ok(label)
 
     return _validate_step(region.db_path, [
-        ("ais_positions",     "SELECT count(*) FROM ais_positions",     1),
-        ("vessel_meta",       "SELECT count(*) FROM vessel_meta",        1),
-        ("sanctions_entities","SELECT count(*) FROM sanctions_entities", 100),
+        ("ais_positions",      "SELECT count(*) FROM ais_positions",      1,   False),  # absent in backtest
+        ("vessel_meta",        "SELECT count(*) FROM vessel_meta",         1,   False),  # absent in backtest
+        ("sanctions_entities", "SELECT count(*) FROM sanctions_entities",  100, True),   # required
     ])
 
 
@@ -228,9 +232,9 @@ def step_features(region: RegionConfig, seed_dummy: bool = False) -> bool:
         _seed_dummy_vessels(region.db_path)
 
     return _validate_step(region.db_path, [
-        ("vessel_features",      "SELECT count(*) FROM vessel_features",      1),
-        ("vessel_features.mmsi", "SELECT count(*) FROM vessel_features WHERE mmsi IS NOT NULL", 1),
-        ("anomaly_scores",       "SELECT count(*) FROM vessel_features WHERE ais_gap_count_30d IS NOT NULL", 1),
+        ("vessel_features",      "SELECT count(*) FROM vessel_features",                                      1, True),
+        ("vessel_features.mmsi", "SELECT count(*) FROM vessel_features WHERE mmsi IS NOT NULL",              1, True),
+        ("anomaly_scores",       "SELECT count(*) FROM vessel_features WHERE ais_gap_count_30d IS NOT NULL", 1, True),
     ])
 
 
