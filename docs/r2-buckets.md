@@ -109,13 +109,30 @@ documaris-public/
     documaris-wasm-{version}.js
 ```
 
-## Validation gate
+## Validation gates
 
-Before the distribute step copies from `maridb-public` to an app bucket:
+Two mandatory gates. Either failure halts the pipeline; previous versions remain live.
 
-1. **Schema check** — expected columns, types, no nulls in required fields
-2. **Completeness check** — row count vs. expected source volume
-3. **arktrace-public** — AIS coverage ≥ threshold; watchlist row count within expected range
-4. **documaris-public** — regulatory KB diff reviewed; silent key deletion blocks copy
+### Gate 1 — before writing to maridb-public
 
-Validation failures halt the copy; the previous version in the app bucket remains live.
+Runs immediately after each pipeline step, before the output is uploaded to `maridb-public`.
+
+| Check | Failure action |
+|---|---|
+| Schema conformance — expected columns, types present | Abort upload; alert |
+| No nulls in required fields | Abort upload; alert |
+| Row count ≥ minimum threshold for the data type | Abort upload; alert |
+| Output is newer than the current version in maridb-public | Abort upload; alert |
+
+### Gate 2 — before R2-to-R2 copy to app buckets
+
+Runs after maridb-public is updated, before copying to `arktrace-public` or `documaris-public`.
+
+| Check | Target bucket | Failure action |
+|---|---|---|
+| Watchlist row count within expected range | arktrace-public | Abort copy |
+| AIS coverage ≥ threshold for the region | arktrace-public | Abort copy |
+| Regulatory KB diff — no silent key deletion | documaris-public | Abort copy |
+| Voyage evidence coverage ≥ threshold | documaris-public | Abort copy |
+
+Previous version in the app bucket remains live on Gate 2 failure.
