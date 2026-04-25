@@ -9,7 +9,6 @@ Failure aborts the copy; the previous version in the app bucket remains live.
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass
 
 import polars as pl
@@ -27,22 +26,22 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class Gate2Result:
+class ValidationResult:
     ok: bool
     errors: list[str]
 
 
-def _validate(df: pl.DataFrame, required_columns: list[str], min_rows: int = 1) -> Gate2Result:
+def _validate(df: pl.DataFrame, required_columns: list[str], min_rows: int = 1) -> ValidationResult:
     errors: list[str] = []
     if len(df) < min_rows:
         errors.append(f"row count {len(df)} < minimum {min_rows}")
     missing = [c for c in required_columns if c not in df.columns]
     if missing:
-        errors.append(f"missing columns: {missing}")
+        errors.append(f"missing required columns: {missing}")
     for col in required_columns:
         if col in df.columns and df[col].null_count() > 0:
             errors.append(f"null values in '{col}': {df[col].null_count()}")
-    return Gate2Result(ok=len(errors) == 0, errors=errors)
+    return ValidationResult(ok=len(errors) == 0, errors=errors)
 
 
 def _read_from_maridb(key: str) -> pl.DataFrame | None:

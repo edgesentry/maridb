@@ -91,7 +91,7 @@ class TestDistributeValidation:
         monkeypatch.setenv("DATA_DIR", str(tmp_path))
         monkeypatch.setenv("USE_S3", "0")
 
-        # Write valid source parquet at the maridb-public key path
+        # Write valid source parquet at the maridb-public key path (DATA_DIR/voyage-evidence/latest.parquet)
         source_dir = tmp_path / "voyage-evidence"
         source_dir.mkdir()
         df = pl.DataFrame({
@@ -107,6 +107,10 @@ class TestDistributeValidation:
 
         ok = push_documaris_voyage_evidence()
         assert ok
+
+        written = pl.read_parquet(source_dir / "latest.parquet")
+        assert written["vessel_id"][0] == "IMO9876543"
+
 
 
 class TestIngestImports:
