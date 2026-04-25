@@ -76,11 +76,19 @@ process_region() {
   fi
 
   # Generate .local.plist with real secrets and resolved paths
+  UV_BIN="$(command -v uv || echo /opt/homebrew/bin/uv)"
+  DATA_DIR="$HOME/.maridb"
+  LOG_DIR="$HOME/.maridb"
+  mkdir -p "$DATA_DIR/data/raw/ais" "$LOG_DIR"
   sed \
     -e "s|REPLACE_WITH_AISSTREAM_API_KEY|$AISSTREAM_API_KEY|g" \
     -e "s|REPLACE_WITH_AWS_ACCESS_KEY_ID|${AWS_ACCESS_KEY_ID:-}|g" \
     -e "s|REPLACE_WITH_AWS_SECRET_ACCESS_KEY|${AWS_SECRET_ACCESS_KEY:-}|g" \
-    -e "s|REPLACE_WITH_PROJECT_DIR|$HOME/.maridb|g" \
+    -e "s|REPLACE_WITH_PROJECT_DIR/data/raw/ais|$DATA_DIR/data/raw/ais|g" \
+    -e "s|REPLACE_WITH_PROJECT_DIR|$REPO_DIR|g" \
+    -e "s|REPLACE_WITH_UV_BIN|$UV_BIN|g" \
+    -e "s|REPLACE_WITH_HOME|$HOME|g" \
+    -e "s|REPLACE_WITH_LOG_DIR|$LOG_DIR|g" \
     "$template" > "$local_plist"
 
   mkdir -p "$HOME/.maridb"
