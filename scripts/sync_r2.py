@@ -1499,7 +1499,7 @@ def _check_env(require_credentials: bool = True) -> bool:
     return True
 
 
-_ARKTRACE_BUCKET = "arktrace-public"
+_ARKTRACE_PUBLIC_BUCKET = "arktrace-public"
 _ARKTRACE_PUBLIC_BASE_URL = "https://arktrace-public.edgesentry.io"
 
 # Tables exposed to the arktrace browser app via ducklake_manifest.json.
@@ -1576,7 +1576,7 @@ def cmd_push_arktrace(args: argparse.Namespace) -> int:
             print(f"  [skip] {local_path.name} — not found", file=sys.stderr)
             continue
         size = local_path.stat().st_size
-        r2_path = f"{_ARKTRACE_BUCKET}/{r2_key}"
+        r2_path = f"{_ARKTRACE_PUBLIC_BUCKET}/{r2_key}"
         print(f"  {local_path.name} ({size / 1024:.1f} KB) → {r2_path}")
         _upload_file(fs, local_path, r2_path)
         total_bytes += size
@@ -1598,7 +1598,7 @@ def cmd_push_arktrace(args: argparse.Namespace) -> int:
     manifest_tmp = Path(tempfile.mktemp(suffix=".json"))
     manifest_tmp.write_text(manifest_json)
     for manifest_key in ["manifest.json", "ducklake_manifest.json"]:
-        r2_path = f"{_ARKTRACE_BUCKET}/{manifest_key}"
+        r2_path = f"{_ARKTRACE_PUBLIC_BUCKET}/{manifest_key}"
         print(f"  {manifest_key} ({len(manifest_json)} B) → {r2_path}")
         _upload_file(fs, manifest_tmp, r2_path)
     manifest_tmp.unlink(missing_ok=True)
