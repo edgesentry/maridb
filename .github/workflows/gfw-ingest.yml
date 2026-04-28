@@ -8,14 +8,9 @@ name: GFW EO Ingest
 #   - Weekly Monday 00:00 UTC (before data-publish at 01:00)
 #   - Manual dispatch
 #
-# Token assignment — GFW allows ONE concurrent report per token, so each
-# parallel job is pinned to a dedicated token to avoid cross-job 429s.
-# With 3 tokens and 5 regions two tokens serve two regions each; those
-# pairs are staggered so both regions don't fire at exactly the same second.
-#
-#   GFW_API_TOKEN_1 → singapore, blacksea
-#   GFW_API_TOKEN_2 → japan, middleeast
-#   GFW_API_TOKEN_3 → europe
+# Token assignment — GFW allows ONE concurrent report per token.
+# Regions run sequentially (max-parallel: 1) so the single token
+# is never contended across jobs.
 
 on:
   schedule:
@@ -37,26 +32,15 @@ jobs:
     permissions:
       contents: read
     strategy:
-      max-parallel: 2  # GFW allows max 2 concurrent requests per account
+      max-parallel: 1  # one region at a time — avoids 429 on shared token
       fail-fast: false
-      # Secrets cannot be referenced in matrix values — use token_num (1/2/3)
-      # and resolve the actual secret in the step env block below.
-      # Token assignment keeps same-token regions in separate parallel slots:
-      #   token 1 → singapore, blacksea  (run in different rounds)
-      #   token 2 → japan, middleeast    (run in different rounds)
-      #   token 3 → europe
       matrix:
-        include:
-          - region: singapore
-            token_num: 1
-          - region: japan
-            token_num: 2
-          - region: europe
-            token_num: 3
-          - region: blacksea
-            token_num: 1
-          - region: middleeast
-            token_num: 2
+        region:
+          - singapore
+          - japan
+          - europe
+          - blacksea
+          - middleeast
     env:
       MARIDB_DATA_DIR: data/processed
 
@@ -74,7 +58,7 @@ jobs:
 
       - name: Fetch GFW EO detections
         env:
-          GFW_API_TOKEN: ${{ matrix.token_num == 1 && secrets.GFW_API_TOKEN_1 || matrix.token_num == 2 && secrets.GFW_API_TOKEN_2 || secrets.GFW_API_TOKEN_3 }}
+          GFW_API_TOKEN: ${{ secrets.GFW_API_TOKEN }}
         run: |
           uv run python scripts/gfw_ingest.py \
             --regions ${{ matrix.region }} \
