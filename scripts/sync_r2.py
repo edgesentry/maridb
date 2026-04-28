@@ -1499,7 +1499,7 @@ def _check_env(require_credentials: bool = True) -> bool:
     return True
 
 
-_ARKTRACE_BUCKET = "arktrace-public"
+_ARKTRACE_PUBLIC_BUCKET = "arktrace-public"
 _ARKTRACE_PUBLIC_BASE_URL = "https://arktrace-public.edgesentry.io"
 
 # Tables exposed to the arktrace browser app via ducklake_manifest.json.
@@ -1576,7 +1576,7 @@ def cmd_push_arktrace(args: argparse.Namespace) -> int:
             print(f"  [skip] {local_path.name} — not found", file=sys.stderr)
             continue
         size = local_path.stat().st_size
-        r2_path = f"{_ARKTRACE_BUCKET}/{r2_key}"
+        r2_path = f"{_ARKTRACE_PUBLIC_BUCKET}/{r2_key}"
         print(f"  {local_path.name} ({size / 1024:.1f} KB) → {r2_path}")
         _upload_file(fs, local_path, r2_path)
         total_bytes += size
@@ -1590,20 +1590,24 @@ def cmd_push_arktrace(args: argparse.Namespace) -> int:
             entry["region"] = region_tag
         manifest_files.append(entry)
 
-    # Write and upload ducklake_manifest.json
+    # Write manifest under both names:
+    #   manifest.json          — new canonical name (arktrace app will migrate to this)
+    #   ducklake_manifest.json — legacy name kept until arktrace app stops reading it
     manifest = {"files": manifest_files}
     manifest_json = _json.dumps(manifest, indent=2)
     manifest_tmp = Path(tempfile.mktemp(suffix=".json"))
     manifest_tmp.write_text(manifest_json)
-    manifest_r2 = f"{_ARKTRACE_BUCKET}/ducklake_manifest.json"
-    print(f"  ducklake_manifest.json ({len(manifest_json)} B) → {manifest_r2}")
-    _upload_file(fs, manifest_tmp, manifest_r2)
+    for manifest_key in ["manifest.json", "ducklake_manifest.json"]:
+        r2_path = f"{_ARKTRACE_PUBLIC_BUCKET}/{manifest_key}"
+        print(f"  {manifest_key} ({len(manifest_json)} B) → {r2_path}")
+        _upload_file(fs, manifest_tmp, r2_path)
     manifest_tmp.unlink(missing_ok=True)
 
     print(
         f"\nDone. Pushed {len(manifest_files)} file(s) ({total_bytes / 1_048_576:.2f} MB) "
         f"+ manifest → arktrace-public\n"
-        f"  Manifest: {_ARKTRACE_PUBLIC_BASE_URL}/ducklake_manifest.json"
+        f"  {_ARKTRACE_PUBLIC_BASE_URL}/manifest.json\n"
+        f"  {_ARKTRACE_PUBLIC_BASE_URL}/ducklake_manifest.json  (legacy — remove once arktrace migrated)"
     )
     return 0
 

@@ -42,9 +42,14 @@
     <string>1</string>
   </dict>
 
-  <!-- Run every hour; skips DBs whose mtime hasn't changed -->
-  <key>StartInterval</key>
-  <integer>3600</integer>
+  <!-- Run daily at 02:00 local time -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>2</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
 
   <key>RunAtLoad</key>
   <true/>
