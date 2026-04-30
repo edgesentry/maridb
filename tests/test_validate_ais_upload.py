@@ -63,11 +63,12 @@ class TestValidateRegion:
         assert result["pass"] is False
         assert "lat" in result["checks"]["schema"]["missing_columns"]
 
-    def test_fails_zero_rows(self, mod):
+    def test_passes_zero_rows(self, mod):
         df = pl.DataFrame({"mmsi": [], "timestamp": [], "lat": [], "lon": []})
         result = mod._validate_region(df, "singapore", "2026-04-29")
-        assert result["pass"] is False
-        assert result["checks"]["row_count"]["pass"] is False
+        assert result["pass"] is True
+        assert result["checks"]["row_count"]["pass"] is True
+        assert result["checks"]["row_count"]["rows"] == 0
 
     def test_fails_mmsi_nulls(self, mod):
         df = _make_df(mmsi=[None, "987654321"])
