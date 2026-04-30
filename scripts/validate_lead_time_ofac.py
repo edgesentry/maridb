@@ -142,7 +142,17 @@ def _load_watchlist(paths: list[Path]) -> pl.DataFrame:
     parts = []
     for p in paths:
         if p.exists():
-            parts.append(pl.read_parquet(p))
+            df = pl.read_parquet(p)
+            # Normalise all datetime columns to UTC so concat doesn't fail on
+            # timezone mismatches (e.g. Asia/Singapore vs Etc/UTC).
+            for col in df.columns:
+                if df[col].dtype == pl.Datetime or (
+                    hasattr(df[col].dtype, "time_zone") and df[col].dtype.time_zone
+                ):
+                    df = df.with_columns(
+                        pl.col(col).dt.convert_time_zone("UTC")
+                    )
+            parts.append(df)
     if not parts:
         return pl.DataFrame()
     combined = pl.concat(parts, how="vertical_relaxed")
