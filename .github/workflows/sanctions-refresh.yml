@@ -1,0 +1,59 @@
+name: Sanctions DB Refresh
+
+# Downloads the latest OpenSanctions export, rebuilds public_eval.duckdb,
+# and pushes it to R2. The daily data-publish pipeline pulls this file for
+# backtest evaluation, so keeping it fresh ensures newly designated vessels
+# are captured in P@50 scoring.
+#
+# OpenSanctions publishes daily updates; rebuilding weekly is a good tradeoff
+# between freshness and the 337 MB download + rebuild cost.
+#
+# Schedule: Monday 00:30 UTC — after GFW ingest (00:00), before data-publish (01:00).
+
+on:
+  schedule:
+    - cron: '30 0 * * 1'  # weekly Monday 00:30 UTC
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: sanctions-refresh
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    name: Rebuild sanctions DB & push to R2
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      MARIDB_DATA_DIR: data/processed
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Download & rebuild public_eval.duckdb
+        run: |
+          uv run python scripts/prepare_public_sanctions_db.py \
+            --force-download \
+            --force-reload \
+            --db data/processed/public_eval.duckdb \
+            --raw-path data/raw/sanctions_entities.jsonl
+
+      - name: Push to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+        run: uv run python scripts/sync_r2.py push-sanctions-db
