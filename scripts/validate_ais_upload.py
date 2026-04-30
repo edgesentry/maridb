@@ -20,9 +20,10 @@ import sys
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import io
+
+import boto3
 import polars as pl
-import pyarrow.fs as pafs
-import pyarrow.parquet as pq
 
 _DEFAULT_BUCKET = "maridb-public"
 _DEFAULT_ENDPOINT = "https://6923ee6d0b3c2d3c15e0d98acda7bc4c.r2.cloudflarestorage.com"
@@ -38,13 +39,24 @@ _ACTIVE_REGIONS = [
 _MIN_ACTIVE_REGIONS = 5
 
 
-def _build_fs() -> pafs.S3FileSystem:
-    return pafs.S3FileSystem(
-        access_key=os.environ["AWS_ACCESS_KEY_ID"],
-        secret_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-        region=os.getenv("AWS_REGION", "auto"),
-        endpoint_override=os.getenv("S3_ENDPOINT", _DEFAULT_ENDPOINT),
+def _build_s3():
+    return boto3.client(
+        "s3",
+        endpoint_url=os.getenv("S3_ENDPOINT", _DEFAULT_ENDPOINT),
+        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+        region_name=os.getenv("AWS_REGION", "auto"),
     )
+
+
+def _read_parquet_from_r2(s3, bucket: str, key: str) -> pl.DataFrame | None:
+    try:
+        obj = s3.get_object(Bucket=bucket, Key=key)
+        return pl.read_parquet(io.BytesIO(obj["Body"].read()))
+    except s3.exceptions.NoSuchKey:
+        return None
+    except Exception:
+        raise
 
 
 def _validate_region(df: pl.DataFrame, region: str, target_date: str) -> dict:
@@ -125,25 +137,23 @@ def main() -> int:
     )
     local_report_path.parent.mkdir(parents=True, exist_ok=True)
 
-    fs = _build_fs()
+    s3 = _build_s3()
     region_results = []
     regions_with_data: list[str] = []
 
     print(f"Validating AIS uploads for {target_date} in {bucket}/ais/ ...")
 
     for region in _ALL_REGIONS:
-        key = f"{bucket}/ais/region={region}/date={target_date}/positions.parquet"
+        key = f"ais/region={region}/date={target_date}/positions.parquet"
         try:
-            info = fs.get_file_info(key)
-            if info.type == pafs.FileType.NotFound:
+            df = _read_parquet_from_r2(s3, bucket, key)
+            if df is None:
                 region_results.append({
                     "region": region, "date": target_date, "row_count": 0,
                     "checks": {}, "pass": False, "error": "file not found in R2",
                 })
                 print(f"  {region:20s} MISSING")
                 continue
-            table = pq.read_table(key, filesystem=fs)
-            df = pl.from_arrow(table)
             result = _validate_region(df, region, target_date)
             region_results.append(result)
             status = "OK" if result["pass"] else "FAIL"
