@@ -122,6 +122,73 @@ class TestPushAisParquet:
         rc = sync_r2.cmd_push_ais_parquet(args)
         assert rc == 1
 
+    def test_uploads_sentinel_when_db_empty(self, tmp_path):
+        """push-ais-parquet uploads an empty sentinel for today when DB has 0 rows."""
+        import duckdb
+        from datetime import date
+
+        db = tmp_path / "singapore.duckdb"
+        con = duckdb.connect(str(db))
+        con.execute("""
+            CREATE TABLE ais_positions (
+                mmsi VARCHAR, timestamp TIMESTAMPTZ, lat DOUBLE, lon DOUBLE,
+                sog FLOAT, cog FLOAT, nav_status TINYINT, ship_type TINYINT
+            )
+        """)
+        con.close()
+
+        mock_fs = MagicMock()
+        mock_fs.get_file_info.return_value = []
+        written_keys = []
+
+        def fake_write_table(table, path, filesystem=None, compression=None):
+            if filesystem is not None:
+                written_keys.append((path, table.num_rows))
+
+        today = date.today().isoformat()
+        args = argparse.Namespace(
+            data_dir=str(tmp_path), staging_dir=str(tmp_path / "staging"), regions="singapore"
+        )
+        with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
+             patch.object(sync_r2, "_ais_db_candidates", return_value=[db]), \
+             patch("pyarrow.parquet.write_table", side_effect=fake_write_table):
+            rc = sync_r2.cmd_push_ais_parquet(args)
+
+        assert rc == 0
+        sentinel_keys = [k for k, rows in written_keys if f"date={today}" in k and rows == 0]
+        assert len(sentinel_keys) == 1, f"expected 1 sentinel, got {written_keys}"
+
+    def test_uploads_sentinel_when_today_missing_from_r2(self, tmp_path):
+        """push-ais-parquet uploads empty sentinel for today even if DB has older rows."""
+        from datetime import date
+
+        db = _make_duckdb(tmp_path / "singapore.duckdb", n_rows=5)  # rows on 2026-04-01
+
+        mock_fs = MagicMock()
+        # Simulate R2 already having 2026-04-01 but NOT today
+        existing_info = MagicMock()
+        existing_info.path = "maridb-public/ais/region=singapore/date=2026-04-01/positions.parquet"
+        mock_fs.get_file_info.return_value = [existing_info]
+
+        written_keys = []
+
+        def fake_write_table(table, path, filesystem=None, compression=None):
+            if filesystem is not None:
+                written_keys.append((path, table.num_rows))
+
+        today = date.today().isoformat()
+        args = argparse.Namespace(
+            data_dir=str(tmp_path), staging_dir=str(tmp_path / "staging"), regions="singapore"
+        )
+        with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
+             patch.object(sync_r2, "_ais_db_candidates", return_value=[db]), \
+             patch("pyarrow.parquet.write_table", side_effect=fake_write_table):
+            rc = sync_r2.cmd_push_ais_parquet(args)
+
+        assert rc == 0
+        sentinel_keys = [k for k, rows in written_keys if f"date={today}" in k and rows == 0]
+        assert len(sentinel_keys) == 1, f"expected 1 today sentinel, got {written_keys}"
+
 
 class TestVesselMetaPush:
     def test_pushes_vessel_meta_when_present(self, tmp_path):
