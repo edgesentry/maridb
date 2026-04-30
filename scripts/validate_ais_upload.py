@@ -23,7 +23,7 @@ from pathlib import Path
 import polars as pl
 
 _DEFAULT_BUCKET = "maridb-public"
-_DEFAULT_ENDPOINT = "https://6923ee6d0b3c2d3c15e0d98acda7bc4c.r2.cloudflarestorage.com"
+_DEFAULT_ENDPOINT = "https://b8a0b09feb89390fb6e8cf4ef9294f48.r2.cloudflarestorage.com"
 
 _REQUIRED_COLUMNS = {"mmsi", "timestamp", "lat", "lon"}
 _ALL_REGIONS = [
