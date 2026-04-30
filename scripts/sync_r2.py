@@ -1283,7 +1283,7 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
             # Upload an empty Parquet for today so the validation job can confirm
             # the upload pipeline ran (file missing = pipeline broken; 0 rows = no vessels).
             r2_key = f"{bucket}/ais/region={region}/date={today_str}/positions.parquet"
-            empty_table = _duckdb.execute(
+            empty_table = con.execute(
                 "SELECT mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type "
                 "FROM ais_positions WHERE 1=0"
             ).to_arrow_table()
