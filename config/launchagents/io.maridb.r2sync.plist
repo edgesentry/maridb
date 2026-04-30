@@ -8,55 +8,50 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>REPLACE_WITH_UV_BIN</string>
+    <string>/opt/homebrew/bin/uv</string>
     <string>run</string>
     <string>--project</string>
-    <string>REPLACE_WITH_PROJECT_DIR</string>
+    <string>/Users/yoheionishi/work/edgesentry/maridb</string>
     <string>python</string>
-    <string>REPLACE_WITH_PROJECT_DIR/scripts/sync_r2.py</string>
+    <string>/Users/yoheionishi/work/edgesentry/maridb/scripts/sync_r2.py</string>
     <string>push-ais-parquet</string>
     <string>--regions</string>
     <string>japansea,blacksea,middleeast,singapore,europe,gulfofmexico,hornofafrica,persiangulf,gulfofaden,gulfofguinea</string>
     <string>--data-dir</string>
-    <string>REPLACE_WITH_HOME/.maridb/data/raw/ais</string>
+    <string>/Users/yoheionishi/.maridb/data/raw/ais</string>
     <string>--staging-dir</string>
-    <string>REPLACE_WITH_HOME/.maridb/data/staging/ais</string>
+    <string>/Users/yoheionishi/.maridb/data/staging/ais</string>
   </array>
 
   <key>WorkingDirectory</key>
-  <string>REPLACE_WITH_PROJECT_DIR</string>
+  <string>/Users/yoheionishi/work/edgesentry/maridb</string>
 
   <key>EnvironmentVariables</key>
   <dict>
     <key>AWS_ACCESS_KEY_ID</key>
-    <string>REPLACE_WITH_AWS_ACCESS_KEY_ID</string>
+    <string>17b97d6de5d8f1e035181e144a7bf10a</string>
     <key>AWS_SECRET_ACCESS_KEY</key>
-    <string>REPLACE_WITH_AWS_SECRET_ACCESS_KEY</string>
+    <string>4adf9ee38277b69932db145f52fe41b9ba96ca3ea20a9ec9faf33111bd857901</string>
     <key>S3_BUCKET</key>
     <string>maridb-public</string>
     <key>HOME</key>
-    <string>REPLACE_WITH_HOME</string>
+    <string>/Users/yoheionishi</string>
     <key>PATH</key>
-    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:REPLACE_WITH_HOME/.local/bin:REPLACE_WITH_HOME/.cargo/bin</string>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/yoheionishi/.local/bin:/Users/yoheionishi/.cargo/bin</string>
     <key>PYTHONUNBUFFERED</key>
     <string>1</string>
   </dict>
 
-  <!-- Run daily at 02:00 local time -->
-  <key>StartCalendarInterval</key>
-  <dict>
-    <key>Hour</key>
-    <integer>2</integer>
-    <key>Minute</key>
-    <integer>0</integer>
-  </dict>
+  <!-- Run every hour -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
 
   <key>RunAtLoad</key>
   <true/>
 
   <key>StandardOutPath</key>
-  <string>REPLACE_WITH_LOG_DIR/r2sync.log</string>
+  <string>/Users/yoheionishi/.maridb/r2sync.log</string>
   <key>StandardErrorPath</key>
-  <string>REPLACE_WITH_LOG_DIR/r2sync.err</string>
+  <string>/Users/yoheionishi/.maridb/r2sync.err</string>
 </dict>
 </plist>
