@@ -1,0 +1,69 @@
+name: Daily AIS Upload Validation
+
+on:
+  schedule:
+    - cron: '0 3 * * *'   # 03:00 UTC daily (after r2sync at 02:00)
+  workflow_dispatch:
+    inputs:
+      validate_date:
+        description: 'Date to validate (YYYY-MM-DD, default: yesterday)'
+        required: false
+
+permissions: {}
+
+jobs:
+  validate:
+    name: Validate AIS uploads & notify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run AIS upload validation
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          VALIDATE_DATE: ${{ inputs.validate_date }}
+        run: |
+          uv run python scripts/validate_ais_upload.py
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+        id: validate
+        continue-on-error: true
+
+      - name: Send validation email
+        if: always()
+        env:
+          NOTIFY_EMAIL: ${{ vars.NOTIFY_EMAIL }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          SMTP_USER: ${{ vars.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          VALIDATE_DATE: ${{ inputs.validate_date }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: uv run python scripts/notify_ais_validation.py
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: ais-validation-report-${{ github.run_id }}
+          path: data/processed/ais_validation_report.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail if validation failed
+        if: steps.validate.outcome == 'failure'
+        run: exit 1
