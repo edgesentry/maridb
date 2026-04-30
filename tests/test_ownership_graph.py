@@ -10,6 +10,7 @@ import pyarrow as pa
 from pipelines.features.ownership_graph import (
     MAX_HOPS,
     _apply_direct_sanctions_fallback,
+    _compute_sanctions_distance,
     _compute_sts_hub_degree,
 )
 from pipelines.ingest.graph_store import NODE_SCHEMAS, REL_SCHEMAS
@@ -185,3 +186,152 @@ def test_sts_hub_degree_hub_vessel():
     )
     result = _compute_sts_hub_degree(tables)
     assert result.filter(pl.col("mmsi") == "111111111")["sts_hub_degree"][0] == 3
+
+
+# ---------------------------------------------------------------------------
+# _compute_sanctions_distance — UBO traversal (distance 0–3 and 99)
+# ---------------------------------------------------------------------------
+
+
+def _make_distance_tables(
+    vessel_mmsis: list[str],
+    sanctioned_ids: list[str],
+    owned_by: list[tuple[str, str]],
+    managed_by: list[tuple[str, str]],
+    controlled_by: list[tuple[str, str]],
+) -> dict:
+    """Build minimal tables dict for _compute_sanctions_distance tests."""
+    vessel_table = pa.table(
+        {"mmsi": vessel_mmsis, "imo": [""] * len(vessel_mmsis), "name": [""] * len(vessel_mmsis)},
+        schema=NODE_SCHEMAS["Vessel"],
+    )
+    sb_table = pa.table(
+        {"src_id": sanctioned_ids, "dst_id": ["regime"] * len(sanctioned_ids),
+         "list": [""] * len(sanctioned_ids), "date": [""] * len(sanctioned_ids)},
+        schema=REL_SCHEMAS["SANCTIONED_BY"],
+    )
+    ob_table = pa.table(
+        {"src_id": [r[0] for r in owned_by], "dst_id": [r[1] for r in owned_by],
+         "since": [""] * len(owned_by), "until": [""] * len(owned_by)},
+        schema=REL_SCHEMAS["OWNED_BY"],
+    ) if owned_by else pa.table(
+        {"src_id": [], "dst_id": [], "since": [], "until": []},
+        schema=REL_SCHEMAS["OWNED_BY"],
+    )
+    mb_table = pa.table(
+        {"src_id": [r[0] for r in managed_by], "dst_id": [r[1] for r in managed_by],
+         "since": [""] * len(managed_by), "until": [""] * len(managed_by)},
+        schema=REL_SCHEMAS["MANAGED_BY"],
+    ) if managed_by else pa.table(
+        {"src_id": [], "dst_id": [], "since": [], "until": []},
+        schema=REL_SCHEMAS["MANAGED_BY"],
+    )
+    cb_table = pa.table(
+        {"src_id": [r[0] for r in controlled_by], "dst_id": [r[1] for r in controlled_by]},
+        schema=REL_SCHEMAS["CONTROLLED_BY"],
+    ) if controlled_by else pa.table(
+        {"src_id": [], "dst_id": []}, schema=REL_SCHEMAS["CONTROLLED_BY"]
+    )
+    return {
+        "Vessel": vessel_table,
+        "SANCTIONED_BY": sb_table,
+        "OWNED_BY": ob_table,
+        "MANAGED_BY": mb_table,
+        "CONTROLLED_BY": cb_table,
+    }
+
+
+def test_sanctions_distance_direct():
+    """A vessel whose MMSI is directly in SANCTIONED_BY gets distance 0."""
+    tables = _make_distance_tables(
+        vessel_mmsis=["111111111"],
+        sanctioned_ids=["111111111"],
+        owned_by=[], managed_by=[], controlled_by=[],
+    )
+    result = _compute_sanctions_distance(tables)
+    assert result.filter(pl.col("mmsi") == "111111111")["sanctions_distance"][0] == 0
+
+
+def test_sanctions_distance_one_hop_owned_by():
+    """A vessel owned by a sanctioned company gets distance 1."""
+    tables = _make_distance_tables(
+        vessel_mmsis=["222222222"],
+        sanctioned_ids=["company-A"],
+        owned_by=[("222222222", "company-A")],
+        managed_by=[], controlled_by=[],
+    )
+    result = _compute_sanctions_distance(tables)
+    assert result.filter(pl.col("mmsi") == "222222222")["sanctions_distance"][0] == 1
+
+
+def test_sanctions_distance_one_hop_managed_by():
+    """A vessel managed by a sanctioned company gets distance 1."""
+    tables = _make_distance_tables(
+        vessel_mmsis=["333333333"],
+        sanctioned_ids=["company-B"],
+        owned_by=[],
+        managed_by=[("333333333", "company-B")],
+        controlled_by=[],
+    )
+    result = _compute_sanctions_distance(tables)
+    assert result.filter(pl.col("mmsi") == "333333333")["sanctions_distance"][0] == 1
+
+
+def test_sanctions_distance_two_hop():
+    """A vessel owned by a company whose parent is sanctioned gets distance 2."""
+    tables = _make_distance_tables(
+        vessel_mmsis=["444444444"],
+        sanctioned_ids=["parent-corp"],
+        owned_by=[("444444444", "child-corp")],
+        managed_by=[],
+        controlled_by=[("child-corp", "parent-corp")],
+    )
+    result = _compute_sanctions_distance(tables)
+    assert result.filter(pl.col("mmsi") == "444444444")["sanctions_distance"][0] == 2
+
+
+def test_sanctions_distance_three_hop_ubo():
+    """A vessel linked to a sanctioned grandparent (UBO) via two CONTROLLED_BY hops
+    gets distance 3."""
+    tables = _make_distance_tables(
+        vessel_mmsis=["555555555"],
+        sanctioned_ids=["grandparent-corp"],
+        owned_by=[("555555555", "child-corp")],
+        managed_by=[],
+        controlled_by=[
+            ("child-corp", "parent-corp"),      # child → parent
+            ("parent-corp", "grandparent-corp"), # parent → grandparent (sanctioned)
+        ],
+    )
+    result = _compute_sanctions_distance(tables)
+    assert result.filter(pl.col("mmsi") == "555555555")["sanctions_distance"][0] == 3
+
+
+def test_sanctions_distance_no_connection():
+    """A vessel with no graph link to any sanctioned entity gets distance 99."""
+    tables = _make_distance_tables(
+        vessel_mmsis=["666666666"],
+        sanctioned_ids=["unrelated-entity"],
+        owned_by=[("666666666", "clean-corp")],
+        managed_by=[],
+        controlled_by=[],
+    )
+    result = _compute_sanctions_distance(tables)
+    assert result.filter(pl.col("mmsi") == "666666666")["sanctions_distance"][0] == MAX_HOPS
+
+
+def test_sanctions_distance_priority_closer_wins():
+    """When a vessel qualifies for multiple distances, the minimum (closest) wins."""
+    # vessel is both distance-1 (managed by sanctioned) and distance-3 (UBO chain)
+    tables = _make_distance_tables(
+        vessel_mmsis=["777777777"],
+        sanctioned_ids=["company-direct", "grandparent-corp"],
+        owned_by=[("777777777", "child-corp")],
+        managed_by=[("777777777", "company-direct")],
+        controlled_by=[
+            ("child-corp", "parent-corp"),
+            ("parent-corp", "grandparent-corp"),
+        ],
+    )
+    result = _compute_sanctions_distance(tables)
+    assert result.filter(pl.col("mmsi") == "777777777")["sanctions_distance"][0] == 1
