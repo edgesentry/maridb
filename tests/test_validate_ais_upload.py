@@ -113,7 +113,14 @@ class TestMain:
         monkeypatch.setenv("VALIDATE_DATE", "2026-04-29")
         monkeypatch.setenv("REPORT_LOCAL_PATH", str(tmp_path / "report.json"))
 
-        def fake_read(bucket, key):
+        class _FakeFS:
+            def open_output_stream(self, path):
+                import io
+                return io.BytesIO()
+
+        monkeypatch.setattr(mod, "_build_fs", lambda: _FakeFS())
+
+        def fake_read(fs, bucket, key):
             region = next(
                 (p.removeprefix("region=") for p in key.split("/") if p.startswith("region=")),
                 None,
@@ -121,14 +128,6 @@ class TestMain:
             return region_data.get(region)
 
         monkeypatch.setattr(mod, "_read_parquet_from_r2", fake_read)
-
-        # Suppress R2 upload
-        import pyarrow.fs as pafs
-        class _FakeFS:
-            def open_output_stream(self, path):
-                import io
-                return io.BytesIO()
-        monkeypatch.setattr(pafs, "S3FileSystem", lambda **_: _FakeFS())
 
         return mod.main()
 
