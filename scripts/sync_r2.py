@@ -1277,8 +1277,8 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
         except Exception as exc:
             print(f"  [skip] cannot open DB: {exc}", file=sys.stderr)
             continue
-        from datetime import date as _date
-        today_str = _date.today().isoformat()
+        from datetime import UTC as _UTC, datetime as _datetime
+        today_str = _datetime.now(_UTC).date().isoformat()
         if row_count == 0:
             # Upload an empty Parquet for today so the validation job can confirm
             # the upload pipeline ran (file missing = pipeline broken; 0 rows = no vessels).
@@ -1300,7 +1300,7 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
         dates = [
             r[0].strftime("%Y-%m-%d")
             for r in con.execute(
-                "SELECT DISTINCT CAST(timestamp AS DATE) FROM ais_positions ORDER BY 1"
+                "SELECT DISTINCT CAST(timezone('UTC', timestamp) AS DATE) FROM ais_positions ORDER BY 1"
             ).fetchall()
         ]
         print(f"  {row_count:,} rows across {len(dates)} date(s)")
@@ -1338,7 +1338,7 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
             for date_str in to_upload:
                 table = con.execute(
                     "SELECT mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type "
-                    "FROM ais_positions WHERE CAST(timestamp AS DATE) = ? ORDER BY mmsi, timestamp",
+                    "FROM ais_positions WHERE CAST(timezone('UTC', timestamp) AS DATE) = ? ORDER BY mmsi, timestamp",
                     [date_str],
                 ).to_arrow_table()
                 local_path = staging_dir / f"region={region}" / f"date={date_str}" / "positions.parquet"
