@@ -2,7 +2,7 @@ name: AIS Upload Validation
 
 on:
   schedule:
-    - cron: '30 0 * * *'   # 00:30 UTC daily — after r2sync (hourly), before data-publish
+    - cron: '30 23 * * *'   # 23:30 UTC daily (07:30 SGT / 08:30 JST) — after r2sync, data ready before work starts
   workflow_dispatch:
     inputs:
       validate_date:
