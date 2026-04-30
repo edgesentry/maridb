@@ -9,11 +9,9 @@ name: Publish data to R2
 #   - Manual dispatch
 
 on:
-  schedule:
-    - cron: '0 1 * * *'   # daily 01:00 UTC
   workflow_dispatch:
   workflow_run:
-    workflows: ["Public Backtest Integration"]
+    workflows: ["Public Backtest Integration", "Daily AIS Upload Validation"]
     branches: ["main"]
     types: [completed]
 

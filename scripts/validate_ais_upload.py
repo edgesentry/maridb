@@ -36,23 +36,29 @@ _ACTIVE_REGIONS = [
 _MIN_ACTIVE_REGIONS = 5
 
 
-def _storage_options() -> dict[str, str]:
-    return {
-        "aws_access_key_id": os.environ["AWS_ACCESS_KEY_ID"],
-        "aws_secret_access_key": os.environ["AWS_SECRET_ACCESS_KEY"],
-        "aws_region": os.getenv("AWS_REGION", "auto"),
-        "aws_endpoint_url": os.getenv("S3_ENDPOINT", _DEFAULT_ENDPOINT),
-    }
+def _build_fs():
+    """Build pyarrow S3FileSystem for R2 — same pattern as sync_r2.py _build_r2_fs()."""
+    import pyarrow.fs as pafs
+    endpoint = os.getenv("S3_ENDPOINT", _DEFAULT_ENDPOINT)
+    host = endpoint.split("://", 1)[-1].rstrip("/")
+    scheme = "https" if endpoint.startswith("https://") else "http"
+    return pafs.S3FileSystem(
+        access_key=os.environ["AWS_ACCESS_KEY_ID"],
+        secret_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+        region=os.getenv("AWS_REGION", "auto"),
+        endpoint_override=host,
+        scheme=scheme,
+    )
 
 
-def _read_parquet_from_r2(bucket: str, key: str) -> pl.DataFrame | None:
-    uri = f"s3://{bucket}/{key}"
-    try:
-        return pl.read_parquet(uri, storage_options=_storage_options())
-    except Exception as exc:
-        if "NoSuchKey" in str(exc) or "404" in str(exc) or "not found" in str(exc).lower():
-            return None
-        raise
+def _read_parquet_from_r2(fs, bucket: str, key: str) -> pl.DataFrame | None:
+    import pyarrow.fs as pafs
+    import pyarrow.parquet as pq
+    path = f"{bucket}/{key}"
+    info = fs.get_file_info(path)
+    if info.type == pafs.FileType.NotFound:
+        return None
+    return pl.from_arrow(pq.read_table(path, filesystem=fs))
 
 
 def _validate_region(df: pl.DataFrame, region: str, target_date: str) -> dict:
@@ -133,6 +139,7 @@ def main() -> int:
     )
     local_report_path.parent.mkdir(parents=True, exist_ok=True)
 
+    fs = _build_fs()
     region_results = []
     regions_with_data: list[str] = []
 
@@ -141,7 +148,7 @@ def main() -> int:
     for region in _ALL_REGIONS:
         key = f"ais/region={region}/date={target_date}/positions.parquet"
         try:
-            df = _read_parquet_from_r2(bucket, key)
+            df = _read_parquet_from_r2(fs, bucket, key)
             if df is None:
                 region_results.append({
                     "region": region, "date": target_date, "row_count": 0,
@@ -186,18 +193,9 @@ def main() -> int:
     local_report_path.write_text(json.dumps(report, indent=2))
     print(f"\nReport written to {local_report_path}")
 
-    # Upload to R2 via polars storage_options (no boto3 needed)
+    # Upload JSON report to R2
     r2_key = f"validation/ais/{target_date}.json"
     try:
-        import pyarrow as pa
-        import pyarrow.fs as pafs
-        opts = _storage_options()
-        fs = pafs.S3FileSystem(
-            access_key=opts["aws_access_key_id"],
-            secret_key=opts["aws_secret_access_key"],
-            region=opts["aws_region"],
-            endpoint_override=opts["aws_endpoint_url"],
-        )
         body = json.dumps(report, indent=2).encode()
         with fs.open_output_stream(f"{bucket}/{r2_key}") as f:
             f.write(body)
