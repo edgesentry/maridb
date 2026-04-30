@@ -20,9 +20,6 @@ import sys
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-import io
-
-import boto3
 import polars as pl
 
 _DEFAULT_BUCKET = "maridb-public"
@@ -39,23 +36,22 @@ _ACTIVE_REGIONS = [
 _MIN_ACTIVE_REGIONS = 5
 
 
-def _build_s3():
-    return boto3.client(
-        "s3",
-        endpoint_url=os.getenv("S3_ENDPOINT", _DEFAULT_ENDPOINT),
-        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-        region_name=os.getenv("AWS_REGION", "auto"),
-    )
+def _storage_options() -> dict[str, str]:
+    return {
+        "aws_access_key_id": os.environ["AWS_ACCESS_KEY_ID"],
+        "aws_secret_access_key": os.environ["AWS_SECRET_ACCESS_KEY"],
+        "aws_region": os.getenv("AWS_REGION", "auto"),
+        "aws_endpoint_url": os.getenv("S3_ENDPOINT", _DEFAULT_ENDPOINT),
+    }
 
 
-def _read_parquet_from_r2(s3, bucket: str, key: str) -> pl.DataFrame | None:
+def _read_parquet_from_r2(bucket: str, key: str) -> pl.DataFrame | None:
+    uri = f"s3://{bucket}/{key}"
     try:
-        obj = s3.get_object(Bucket=bucket, Key=key)
-        return pl.read_parquet(io.BytesIO(obj["Body"].read()))
-    except s3.exceptions.NoSuchKey:
-        return None
-    except Exception:
+        return pl.read_parquet(uri, storage_options=_storage_options())
+    except Exception as exc:
+        if "NoSuchKey" in str(exc) or "404" in str(exc) or "not found" in str(exc).lower():
+            return None
         raise
 
 
@@ -137,7 +133,6 @@ def main() -> int:
     )
     local_report_path.parent.mkdir(parents=True, exist_ok=True)
 
-    s3 = _build_s3()
     region_results = []
     regions_with_data: list[str] = []
 
@@ -146,7 +141,7 @@ def main() -> int:
     for region in _ALL_REGIONS:
         key = f"ais/region={region}/date={target_date}/positions.parquet"
         try:
-            df = _read_parquet_from_r2(s3, bucket, key)
+            df = _read_parquet_from_r2(bucket, key)
             if df is None:
                 region_results.append({
                     "region": region, "date": target_date, "row_count": 0,
@@ -191,23 +186,21 @@ def main() -> int:
     local_report_path.write_text(json.dumps(report, indent=2))
     print(f"\nReport written to {local_report_path}")
 
-    # Upload to R2
+    # Upload to R2 via polars storage_options (no boto3 needed)
     r2_key = f"validation/ais/{target_date}.json"
     try:
-        import boto3
-        s3 = boto3.client(
-            "s3",
-            endpoint_url=os.getenv("S3_ENDPOINT", _DEFAULT_ENDPOINT),
-            aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-            region_name=os.getenv("AWS_REGION", "auto"),
+        import pyarrow as pa
+        import pyarrow.fs as pafs
+        opts = _storage_options()
+        fs = pafs.S3FileSystem(
+            access_key=opts["aws_access_key_id"],
+            secret_key=opts["aws_secret_access_key"],
+            region=opts["aws_region"],
+            endpoint_override=opts["aws_endpoint_url"],
         )
-        s3.put_object(
-            Bucket=bucket,
-            Key=r2_key,
-            Body=json.dumps(report, indent=2).encode(),
-            ContentType="application/json",
-        )
+        body = json.dumps(report, indent=2).encode()
+        with fs.open_output_stream(f"{bucket}/{r2_key}") as f:
+            f.write(body)
         print(f"Report uploaded to R2: {bucket}/{r2_key}")
     except Exception as exc:
         print(f"Warning: failed to upload report to R2: {exc}", file=sys.stderr)
