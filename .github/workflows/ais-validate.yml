@@ -5,9 +5,10 @@ on:
     - cron: '30 23 * * *'   # 23:30 UTC daily (07:30 SGT / 08:30 JST) — after r2sync, data ready before work starts
   workflow_dispatch:
     inputs:
-      validate_date:
-        description: 'Date to validate (YYYY-MM-DD, default: yesterday)'
+      validate_days:
+        description: 'Number of past days to validate (default: 3)'
         required: false
+        default: '3'
 
 permissions: {}
 
@@ -36,7 +37,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: auto
           S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
-          VALIDATE_DATE: ${{ inputs.validate_date }}
+          VALIDATE_DAYS: ${{ inputs.validate_days || '3' }}
         run: |
           uv run python scripts/validate_ais_upload.py
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"

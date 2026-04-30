@@ -1,15 +1,16 @@
-"""Daily validation of AIS Parquet files uploaded to maridb-public/ais/.
+"""Validate AIS Parquet files uploaded to maridb-public/ais/.
 
-Reads yesterday's partition for each region from R2, runs sanity checks,
-writes a JSON report to R2 at validation/ais/YYYY-MM-DD.json, and exits
-non-zero if any region fails a required check.
+Checks the past VALIDATE_DAYS days (default 3) — catches late-arriving data
+and multi-day gaps. Writes per-day JSON reports to R2 and exits non-zero if
+the most recent day fails or too many days in the window fail.
 
 Environment variables
 ---------------------
 AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION  R2 credentials
 S3_BUCKET          Override bucket name (default: maridb-public)
-VALIDATE_DATE      Override target date ISO string (default: yesterday)
-REPORT_LOCAL_PATH  Local path to write report JSON (default: data/processed/ais_validation_report.json)
+VALIDATE_DAYS      Number of past days to validate (default: 3)
+REPORT_LOCAL_PATH  Local path to write combined report JSON
+                   (default: data/processed/ais_validation_report.json)
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import polars as pl
@@ -60,7 +61,7 @@ def _read_parquet_from_r2(fs, bucket: str, key: str) -> pl.DataFrame | None:
     return pl.from_arrow(pq.read_table(path, filesystem=fs))
 
 
-def _validate_region(df: pl.DataFrame, region: str, target_date: str) -> dict:
+def _validate_region(df: pl.DataFrame, region: str, target_date: str, is_recent: bool) -> dict:
     result: dict = {"region": region, "date": target_date, "row_count": df.height, "checks": {}}
 
     # Schema
@@ -70,7 +71,7 @@ def _validate_region(df: pl.DataFrame, region: str, target_date: str) -> dict:
         "missing_columns": sorted(missing_cols),
     }
 
-    # Row count — 0 rows is OK (no vessels in region that day); file missing is the real error
+    # Row count — 0 rows OK (sentinel uploaded; no vessels that day)
     result["checks"]["row_count"] = {"pass": True, "rows": df.height}
 
     if df.height == 0:
@@ -99,8 +100,8 @@ def _validate_region(df: pl.DataFrame, region: str, target_date: str) -> dict:
             "null_rate": round(null_rate, 4),
         }
 
-    # Timestamp recency (within last 48 hours from now)
-    if "timestamp" in df.columns:
+    # Timestamp within target date (UTC) — skip for older days; recency only matters for yesterday
+    if is_recent and "timestamp" in df.columns:
         try:
             ts_col = df["timestamp"]
             if ts_col.dtype == pl.Utf8:
@@ -130,20 +131,12 @@ def _validate_region(df: pl.DataFrame, region: str, target_date: str) -> dict:
     return result
 
 
-def main() -> int:
-    bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
-    target_date = os.getenv("VALIDATE_DATE") or (date.today() - timedelta(days=1)).isoformat()
-    local_report_path = Path(
-        os.getenv("REPORT_LOCAL_PATH", "data/processed/ais_validation_report.json")
-    )
-    local_report_path.parent.mkdir(parents=True, exist_ok=True)
-
-    fs = _build_fs()
+def _validate_date(fs, bucket: str, target_date: str, is_recent: bool) -> dict:
+    """Validate all regions for a single date. Returns a day-level result dict."""
     region_results = []
-    regions_with_data: list[str] = []
+    regions_passing = []
 
-    print(f"Validating AIS uploads for {target_date} in {bucket}/ais/ ...")
-
+    print(f"\n[{target_date}]{'  ← most recent' if is_recent else ''}")
     for region in _ALL_REGIONS:
         key = f"ais/region={region}/date={target_date}/positions.parquet"
         try:
@@ -155,12 +148,12 @@ def main() -> int:
                 })
                 print(f"  {region:20s} MISSING")
                 continue
-            result = _validate_region(df, region, target_date)
+            result = _validate_region(df, region, target_date, is_recent)
             region_results.append(result)
             status = "OK" if result["pass"] else "FAIL"
             print(f"  {region:20s} {status:4s}  rows={result['row_count']:,}")
             if result["pass"]:
-                regions_with_data.append(region)
+                regions_passing.append(region)
         except Exception as exc:
             region_results.append({
                 "region": region, "date": target_date, "row_count": 0,
@@ -168,14 +161,17 @@ def main() -> int:
             })
             print(f"  {region:20s} ERROR: {exc}")
 
-    # Region coverage check
-    active_passing = [r for r in regions_with_data if r in _ACTIVE_REGIONS]
+    active_passing = [r for r in regions_passing if r in _ACTIVE_REGIONS]
     coverage_pass = len(active_passing) >= _MIN_ACTIVE_REGIONS
 
-    report = {
-        "generated_at_utc": datetime.now(UTC).isoformat(),
-        "target_date": target_date,
-        "regions_passing": regions_with_data,
+    day_pass = coverage_pass and all(
+        r["pass"] for r in region_results if r["region"] in _ACTIVE_REGIONS
+    )
+    print(f"  → {'PASS' if day_pass else 'FAIL'} ({len(active_passing)}/{_MIN_ACTIVE_REGIONS} active regions)")
+
+    return {
+        "date": target_date,
+        "pass": day_pass,
         "active_regions_passing": active_passing,
         "coverage_check": {
             "pass": coverage_pass,
@@ -183,28 +179,77 @@ def main() -> int:
             "required": _MIN_ACTIVE_REGIONS,
         },
         "region_results": region_results,
-        "overall_pass": coverage_pass and all(
-            r["pass"] for r in region_results if r["region"] in _ACTIVE_REGIONS
-        ),
     }
 
-    # Write local report
+
+def main() -> int:
+    bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
+    validate_days = int(os.getenv("VALIDATE_DAYS", "3"))
+    local_report_path = Path(
+        os.getenv("REPORT_LOCAL_PATH", "data/processed/ais_validation_report.json")
+    )
+    local_report_path.parent.mkdir(parents=True, exist_ok=True)
+
+    now_utc = datetime.now(UTC)
+    # Validate from (validate_days) ago up to yesterday (UTC)
+    dates = [
+        (now_utc - timedelta(days=i)).date().isoformat()
+        for i in range(validate_days, 0, -1)
+    ]
+    most_recent = dates[-1]
+
+    print(f"Validating AIS uploads — past {validate_days} days (UTC): {dates[0]} → {most_recent}")
+    print(f"Bucket: {bucket}/ais/")
+
+    fs = _build_fs()
+    day_results = []
+
+    for target_date in dates:
+        is_recent = (target_date == most_recent)
+        day_result = _validate_date(fs, bucket, target_date, is_recent)
+        day_results.append(day_result)
+
+        # Upload per-day report to R2
+        r2_key = f"validation/ais/{target_date}.json"
+        try:
+            with fs.open_output_stream(f"{bucket}/{r2_key}") as f:
+                f.write(json.dumps(day_result, indent=2).encode())
+        except Exception as exc:
+            print(f"  Warning: failed to upload day report to R2: {exc}", file=sys.stderr)
+
+    # Overall pass: most recent day passes AND at least (validate_days - 1) days pass
+    most_recent_result = day_results[-1]
+    days_passing = sum(1 for d in day_results if d["pass"])
+    overall_pass = most_recent_result["pass"] and days_passing >= (validate_days - 1)
+
+    print(f"\n{'='*50}")
+    for d in day_results:
+        icon = "✅" if d["pass"] else "❌"
+        print(f"  {icon} {d['date']}  ({len(d['active_regions_passing'])}/{_MIN_ACTIVE_REGIONS} active regions)")
+    print(f"\nOverall: {'PASS' if overall_pass else 'FAIL'} "
+          f"({days_passing}/{validate_days} days passing)")
+
+    report = {
+        "generated_at_utc": now_utc.isoformat(),
+        "validate_days": validate_days,
+        "most_recent_date": most_recent,
+        "days_passing": days_passing,
+        "overall_pass": overall_pass,
+        "day_results": day_results,
+    }
+
     local_report_path.write_text(json.dumps(report, indent=2))
-    print(f"\nReport written to {local_report_path}")
+    print(f"Report written to {local_report_path}")
 
-    # Upload JSON report to R2
-    r2_key = f"validation/ais/{target_date}.json"
+    # Upload combined report
     try:
-        body = json.dumps(report, indent=2).encode()
-        with fs.open_output_stream(f"{bucket}/{r2_key}") as f:
-            f.write(body)
-        print(f"Report uploaded to R2: {bucket}/{r2_key}")
+        with fs.open_output_stream(f"{bucket}/validation/ais/latest.json") as f:
+            f.write(json.dumps(report, indent=2).encode())
+        print(f"Combined report uploaded to R2: {bucket}/validation/ais/latest.json")
     except Exception as exc:
-        print(f"Warning: failed to upload report to R2: {exc}", file=sys.stderr)
+        print(f"Warning: failed to upload combined report to R2: {exc}", file=sys.stderr)
 
-    overall = report["overall_pass"]
-    print(f"\nOverall: {'PASS' if overall else 'FAIL'}")
-    return 0 if overall else 1
+    return 0 if overall_pass else 1
 
 
 if __name__ == "__main__":
