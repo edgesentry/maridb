@@ -11,11 +11,7 @@ name: Publish data to R2
 on:
   workflow_dispatch:
   workflow_run:
-<<<<<<< Updated upstream
-    workflows: ["Public Backtest Integration", "Daily AIS Upload Validation"]
-=======
     workflows: ["Daily AIS Upload Validation"]
->>>>>>> Stashed changes
     branches: ["main"]
     types: [completed]
 
