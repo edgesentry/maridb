@@ -1314,6 +1314,23 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
         except Exception:
             pass
         to_upload = [d for d in dates if d not in existing_r2]
+        # If today has no rows yet, upload an empty sentinel so validation
+        # can confirm the pipeline ran for this region.
+        if today_str not in existing_r2 and today_str not in dates:
+            empty_table = con.execute(
+                "SELECT mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type "
+                "FROM ais_positions WHERE 1=0"
+            ).to_arrow_table()
+            local_path = staging_dir / f"region={region}" / f"date={today_str}" / "positions.parquet"
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            pq.write_table(empty_table, local_path, compression="snappy")
+            r2_key = f"{bucket}/ais/region={region}/date={today_str}/positions.parquet"
+            try:
+                pq.write_table(empty_table, r2_key, filesystem=fs, compression="snappy")
+                print(f"  {today_str} (0 rows) -> uploaded empty sentinel to R2")
+                total_uploaded += 1
+            except Exception as exc:
+                print(f"  [warn] failed to upload empty sentinel: {exc}", file=sys.stderr)
         if not to_upload:
             print(f"  all {len(dates)} date(s) already in R2 - skipping")
         else:
