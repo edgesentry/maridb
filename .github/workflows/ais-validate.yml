@@ -1,4 +1,4 @@
-name: Daily AIS Upload Validation
+name: AIS Upload Validation
 
 on:
   schedule:
