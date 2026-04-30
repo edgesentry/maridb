@@ -70,11 +70,11 @@ def _validate_region(df: pl.DataFrame, region: str, target_date: str) -> dict:
         "missing_columns": sorted(missing_cols),
     }
 
-    # Row count
-    result["checks"]["row_count"] = {"pass": df.height >= 1, "rows": df.height}
+    # Row count — 0 rows is OK (no vessels in region that day); file missing is the real error
+    result["checks"]["row_count"] = {"pass": True, "rows": df.height}
 
     if df.height == 0:
-        result["pass"] = False
+        result["pass"] = True
         return result
 
     # Null rate for mmsi

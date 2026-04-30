@@ -1277,8 +1277,25 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
         except Exception as exc:
             print(f"  [skip] cannot open DB: {exc}", file=sys.stderr)
             continue
+        from datetime import date as _date
+        today_str = _date.today().isoformat()
         if row_count == 0:
-            print("  [skip] ais_positions is empty")
+            # Upload an empty Parquet for today so the validation job can confirm
+            # the upload pipeline ran (file missing = pipeline broken; 0 rows = no vessels).
+            r2_key = f"{bucket}/ais/region={region}/date={today_str}/positions.parquet"
+            empty_table = _duckdb.execute(
+                "SELECT mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type "
+                "FROM ais_positions WHERE 1=0"
+            ).to_arrow_table()
+            local_path = staging_dir / f"region={region}" / f"date={today_str}" / "positions.parquet"
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            pq.write_table(empty_table, local_path, compression="snappy")
+            try:
+                pq.write_table(empty_table, r2_key, filesystem=fs, compression="snappy")
+                print(f"  {today_str} (0 rows) -> uploaded empty sentinel to R2")
+                total_uploaded += 1
+            except Exception as exc:
+                print(f"  [warn] failed to upload empty sentinel: {exc}", file=sys.stderr)
             continue
         dates = [
             r[0].strftime("%Y-%m-%d")
