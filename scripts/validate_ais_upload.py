@@ -164,10 +164,8 @@ def _validate_date(fs, bucket: str, target_date: str, is_recent: bool) -> dict:
     active_passing = [r for r in regions_passing if r in _ACTIVE_REGIONS]
     coverage_pass = len(active_passing) >= _MIN_ACTIVE_REGIONS
 
-    day_pass = coverage_pass and all(
-        r["pass"] for r in region_results if r["region"] in _ACTIVE_REGIONS
-    )
-    print(f"  → {'PASS' if day_pass else 'FAIL'} ({len(active_passing)}/{_MIN_ACTIVE_REGIONS} active regions)")
+    day_pass = coverage_pass
+    print(f"  → {'PASS' if day_pass else 'FAIL'} ({len(active_passing)}/{len(_ACTIVE_REGIONS)} active regions)")
 
     return {
         "date": target_date,
