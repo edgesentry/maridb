@@ -127,20 +127,37 @@ def fetch_gfw_detections(
 
     _RETRY_WAIT = 60  # seconds — GFW allows one concurrent report per token
     _MAX_WAITS = 5
+    _CONN_RETRY_WAITS = (30, 60, 120)  # backoff for connection-level errors
 
     token_idx = 0
     wait_count = 0
+    conn_attempt = 0
 
     while True:
         current_token = tokens[token_idx % len(tokens)]
         headers["Authorization"] = f"Bearer {current_token}"
-        resp = httpx.post(
-            f"{GFW_API_BASE}/4wings/report",
-            params=params,
-            json=body,
-            headers=headers,
-            timeout=180,
-        )
+        try:
+            resp = httpx.post(
+                f"{GFW_API_BASE}/4wings/report",
+                params=params,
+                json=body,
+                headers=headers,
+                timeout=300,
+            )
+        except (httpx.RemoteProtocolError, httpx.ReadTimeout, httpx.ConnectError) as exc:
+            if conn_attempt >= len(_CONN_RETRY_WAITS):
+                raise RuntimeError(
+                    f"GFW API connection failed after {conn_attempt} retries: {exc}"
+                ) from exc
+            wait = _CONN_RETRY_WAITS[conn_attempt]
+            print(
+                f"  GFW connection error ({exc}); retrying in {wait}s"
+                f" (attempt {conn_attempt + 1}/{len(_CONN_RETRY_WAITS)}) ...",
+                flush=True,
+            )
+            time.sleep(wait)
+            conn_attempt += 1
+            continue
         if resp.status_code in (401, 403):
             raise PermissionError(
                 f"GFW API returned {resp.status_code}: token lacks access to "
