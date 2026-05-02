@@ -250,3 +250,36 @@ def test_active_regions_shows_none_when_empty(tmp_path, monkeypatch):
 
     assert bodies
     assert "none" in bodies[0].lower()
+
+
+def test_zero_row_checks_show_dash(tmp_path, monkeypatch):
+    """Regions with 0 rows have empty check dicts — must display '—' not '❌'."""
+    zero_row_region = {
+        "region": "japansea",
+        "date": "2026-05-02",
+        "row_count": 0,
+        "checks": {},
+        "pass": True,
+    }
+    day = _make_day_result(region_results=[zero_row_region])
+    report = _make_report(day_results=[day])
+    report_path = tmp_path / "ais_validation_report.json"
+    report_path.write_text(json.dumps(report))
+
+    mod = _load_notify()
+    monkeypatch.setattr(mod, "_REPORT_PATH", report_path)
+    _set_smtp_env(monkeypatch)
+
+    bodies = []
+    with patch("smtplib.SMTP", _fake_smtp_capture(bodies)):
+        mod.main()
+
+    assert bodies
+    body = bodies[0]
+    # Count of ❌ in the japansea row should be zero (all empty checks → —)
+    # The row_color is green (pass=True) so we check the cell content
+    assert "—" in body, "zero-row region checks must show '—' not '❌'"
+    # Should not show ❌ for the data quality checks (only possibly for status)
+    japansea_section = body[body.find("japansea"):][:200]
+    assert japansea_section.count("❌") == 0, \
+        f"zero-row region should have no ❌ in quality checks: {japansea_section}"

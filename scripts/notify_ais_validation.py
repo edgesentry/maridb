@@ -27,6 +27,8 @@ def _row_color(passed: bool) -> str:
 
 
 def _check_cell(check: dict) -> str:
+    if not check:
+        return "—"
     if check.get("pass"):
         return "✅"
     details = " | ".join(
