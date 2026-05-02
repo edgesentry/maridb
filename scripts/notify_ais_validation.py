@@ -56,8 +56,13 @@ def main() -> int:
     report = json.loads(_REPORT_PATH.read_text())
     target_date = report.get("most_recent_date", report.get("target_date", "unknown"))
     overall_pass = report.get("overall_pass", False)
-    coverage = report.get("coverage_check", {})
-    active_passing = report.get("active_regions_passing", [])
+
+    # active_regions_passing, coverage_check, and region_results live inside
+    # each day_result, not at the top level — use the most recent day
+    day_results = report.get("day_results", [])
+    most_recent_day = day_results[-1] if day_results else {}
+    coverage = most_recent_day.get("coverage_check", {})
+    active_passing = most_recent_day.get("active_regions_passing", [])
 
     run_id = os.getenv("GITHUB_RUN_ID", "")
     repo = os.getenv("GITHUB_REPOSITORY", "edgesentry/maridb")
@@ -70,7 +75,7 @@ def main() -> int:
     subject = f"{status_icon} maridb AIS validation — {target_date} ({'PASS' if overall_pass else 'FAIL'})"
 
     region_rows = ""
-    for r in report.get("region_results", []):
+    for r in most_recent_day.get("region_results", []):
         color = _row_color(r.get("pass", False))
         checks = r.get("checks", {})
         err = r.get("error", "")
