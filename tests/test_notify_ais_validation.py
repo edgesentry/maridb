@@ -16,7 +16,8 @@ def _load_notify():
 
 
 def _make_day_result(date="2026-05-02", active_passing=None, required=5, region_results=None):
-    active_passing = active_passing or ["japansea", "singapore", "europe", "blacksea", "middleeast", "gulfofguinea"]
+    if active_passing is None:
+        active_passing = ["japansea", "singapore", "europe", "blacksea", "middleeast", "gulfofguinea"]
     return {
         "date": date,
         "pass": True,
