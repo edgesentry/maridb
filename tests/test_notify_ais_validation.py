@@ -1,7 +1,6 @@
 """Tests for notify_ais_validation.py — subject line date extraction."""
 import importlib.util
 import json
-import sys
 from pathlib import Path
 from unittest.mock import patch
 
