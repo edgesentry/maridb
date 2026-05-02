@@ -154,6 +154,17 @@ def test_subject_uses_target_date_as_fallback(tmp_path, monkeypatch):
     assert "unknown" not in subjects[0]
 
 
+def _decode_body(raw_msg: str) -> str:
+    """Extract and decode the HTML body from a raw MIME message string."""
+    import email
+    msg = email.message_from_string(raw_msg)
+    for part in msg.walk():
+        if part.get_content_type() == "text/html":
+            payload = part.get_payload(decode=True)
+            return payload.decode("utf-8") if payload else ""
+    return raw_msg
+
+
 def _fake_smtp_capture(bodies):
     class FakeSMTP:
         def __init__(self, *a, **kw): pass
@@ -162,7 +173,7 @@ def _fake_smtp_capture(bodies):
         def starttls(self): pass
         def login(self, *a): pass
         def sendmail(self, _from, _to, msg):
-            bodies.append(msg)
+            bodies.append(_decode_body(msg))
     return FakeSMTP
 
 
