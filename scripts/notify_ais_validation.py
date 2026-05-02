@@ -54,7 +54,7 @@ def main() -> int:
         return 1
 
     report = json.loads(_REPORT_PATH.read_text())
-    target_date = report.get("target_date", "unknown")
+    target_date = report.get("most_recent_date", report.get("target_date", "unknown"))
     overall_pass = report.get("overall_pass", False)
     coverage = report.get("coverage_check", {})
     active_passing = report.get("active_regions_passing", [])
