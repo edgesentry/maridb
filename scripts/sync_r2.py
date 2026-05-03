@@ -1005,6 +1005,74 @@ def cmd_push_ducklake_public(args: argparse.Namespace) -> int:
 _DUCKLAKE_AIS_CATALOG = "ducklake/catalog.duckdb"
 _DUCKLAKE_AIS_DATA = "ducklake/data"
 _AIS_DB_MIN_SIZE_BYTES = 1_048_576  # skip placeholder DBs smaller than 1 MB
+_GEBCO_R2_PREFIX = "gebco-masks/"  # maridb-public sub-prefix for GEBCO depth masks
+
+
+def cmd_push_gebco_masks(args: argparse.Namespace) -> int:
+    """Upload GEBCO depth-mask Parquets to maridb-public/gebco-masks/.
+
+    GEBCO (General Bathymetric Chart of the Oceans) is freely published by the
+    British Oceanographic Data Centre — pure OSINT, no licence restrictions on
+    redistribution.  Run ``scripts/build_gebco_mask.py`` first to generate the
+    ``{region}_deep_cells.parquet`` files.
+    """
+    data_dir = Path(args.data_dir)
+    parquets = sorted(data_dir.glob("*_deep_cells.parquet"))
+    if not parquets:
+        print(
+            f"No *_deep_cells.parquet files found in {data_dir}. Run build_gebco_mask.py first.",
+            file=sys.stderr,
+        )
+        return 1
+
+    bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
+    fs = _build_r2_fs()
+    for p in parquets:
+        r2_key = f"{bucket}/{_GEBCO_R2_PREFIX}{p.name}"
+        size_kb = p.stat().st_size / 1024
+        print(f"  {p.name} ({size_kb:.1f} KB) → {r2_key} ...", end="", flush=True)
+        _upload_file(fs, p, r2_key)
+        print(" ✓")
+    print(f"\nDone. {len(parquets)} GEBCO mask(s) pushed to {bucket}/{_GEBCO_R2_PREFIX}")
+    return 0
+
+
+def cmd_pull_gebco_masks(args: argparse.Namespace) -> int:
+    """Download GEBCO depth-mask Parquets from maridb-public/gebco-masks/.
+
+    No credentials required — maridb-public is fully public.
+    """
+    import pyarrow.fs as pafs
+
+    data_dir = Path(args.data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
+    fs = _build_r2_fs(anonymous=True)
+    prefix = f"{bucket}/{_GEBCO_R2_PREFIX}"
+
+    try:
+        infos = fs.get_file_info(pafs.FileSelector(prefix, recursive=False))
+    except Exception as exc:
+        print(f"Error listing {prefix}: {exc}", file=sys.stderr)
+        return 1
+
+    parquets = [i for i in infos if i.type == pafs.FileType.File and i.path.endswith(".parquet")]
+    if not parquets:
+        print(
+            f"No GEBCO masks found at {prefix}. Run build_gebco_mask.py and push-gebco-masks first."
+        )
+        return 0
+
+    for info in parquets:
+        filename = Path(info.path).name
+        local_path = data_dir / filename
+        size_kb = info.size / 1024
+        print(f"  {filename} ({size_kb:.1f} KB) ...", end="", flush=True)
+        _download_file(fs, info.path, local_path)
+        print(" ✓")
+    print(f"\nDone. GEBCO masks restored to {data_dir}/")
+    return 0
 
 
 def _ais_db_candidates(data_dir: Path, regions: list[str] | None) -> list[Path]:
@@ -1596,6 +1664,17 @@ def main() -> int:
     )
     push_dl_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
+    push_gebco_p = sub.add_parser(
+        "push-gebco-masks", help="Upload GEBCO depth-mask Parquets to maridb-public/gebco-masks/"
+    )
+    push_gebco_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+
+    pull_gebco_p = sub.add_parser(
+        "pull-gebco-masks",
+        help="Download GEBCO depth-mask Parquets from maridb-public/gebco-masks/",
+    )
+    pull_gebco_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+
     push_arktrace_p = sub.add_parser(
         "push-arktrace",
         help="Copy score Parquets to arktrace-public and write ducklake_manifest.json (arktrace#519)",
@@ -1628,6 +1707,8 @@ def main() -> int:
         "push-demo": cmd_push_demo,
         "pull-demo": cmd_pull_demo,
         "push-ducklake-public": cmd_push_ducklake_public,
+        "push-gebco-masks": cmd_push_gebco_masks,
+        "pull-gebco-masks": cmd_pull_gebco_masks,
         "push-arktrace": cmd_push_arktrace,
         "list": cmd_list,
     }

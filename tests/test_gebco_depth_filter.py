@@ -9,11 +9,17 @@ Covers:
 
 from __future__ import annotations
 
+import argparse
+import sys
 from datetime import UTC, datetime
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import duckdb
 import polars as pl
 
+sys.path.insert(0, str(Path(__file__).parents[1]))
+import scripts.sync_r2 as sync_r2
 from pipelines.features.ais_behavior import (
     _load_deep_cells,
     compute_sts_candidates,
@@ -281,3 +287,69 @@ def test_build_sts_contacts_no_mask_returns_contacts(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# sync_r2 push-gebco-masks / pull-gebco-masks (maridb-public, no credentials)
+# ---------------------------------------------------------------------------
+
+
+def test_push_gebco_masks_returns_1_when_no_parquets(tmp_path):
+    args = argparse.Namespace(data_dir=str(tmp_path))
+    assert sync_r2.cmd_push_gebco_masks(args) == 1
+
+
+def test_push_gebco_masks_uploads_all_parquets(tmp_path):
+    for name in ("singapore_deep_cells.parquet", "japansea_deep_cells.parquet"):
+        pl.DataFrame({"h3_cell": ["abc"]}).write_parquet(tmp_path / name)
+
+    mock_fs = MagicMock()
+    args = argparse.Namespace(data_dir=str(tmp_path))
+
+    with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs):
+        with patch.object(sync_r2, "_upload_file") as mock_upload:
+            result = sync_r2.cmd_push_gebco_masks(args)
+
+    assert result == 0
+    assert mock_upload.call_count == 2
+    names = {Path(c.args[1]).name for c in mock_upload.call_args_list}
+    assert names == {"singapore_deep_cells.parquet", "japansea_deep_cells.parquet"}
+
+
+def test_push_gebco_masks_r2_path_uses_public_bucket(tmp_path):
+    """GEBCO masks go to maridb-public (OSINT data, no private bucket needed)."""
+    pl.DataFrame({"h3_cell": ["abc"]}).write_parquet(tmp_path / "singapore_deep_cells.parquet")
+    mock_fs = MagicMock()
+    args = argparse.Namespace(data_dir=str(tmp_path))
+
+    with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs):
+        with patch.object(sync_r2, "_upload_file") as mock_upload:
+            sync_r2.cmd_push_gebco_masks(args)
+
+    r2_path = mock_upload.call_args.args[2]
+    assert r2_path.startswith(sync_r2._DEFAULT_BUCKET)
+    assert "gebco-masks/" in r2_path
+
+
+def test_pull_gebco_masks_downloads_without_credentials(tmp_path, monkeypatch):
+    """Pull from maridb-public requires no credentials."""
+    import pyarrow.fs as pafs
+
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+
+    mock_info = MagicMock()
+    mock_info.type = pafs.FileType.File
+    mock_info.path = f"{sync_r2._DEFAULT_BUCKET}/gebco-masks/singapore_deep_cells.parquet"
+    mock_info.size = 1024
+
+    mock_fs = MagicMock()
+    mock_fs.get_file_info.return_value = [mock_info]
+
+    args = argparse.Namespace(data_dir=str(tmp_path))
+    with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs):
+        with patch.object(sync_r2, "_download_file") as mock_dl:
+            result = sync_r2.cmd_pull_gebco_masks(args)
+
+    assert result == 0
+    mock_dl.assert_called_once()
+    assert mock_dl.call_args.args[2] == tmp_path / "singapore_deep_cells.parquet"
