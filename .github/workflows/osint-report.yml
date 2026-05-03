@@ -1,0 +1,80 @@
+name: OSINT Watchlist Report
+
+# Generates a structured OSINT report from the latest candidate_watchlist.parquet
+# and opens a GitHub Issue so the team stays current without manual effort.
+# Case B in docs/osint-workflow-design.md.
+#
+# Schedule: Monday 07:00 UTC — after sanctions-refresh (00:30) and
+#           data-publish (01:00) have both completed and pushed fresh watchlists.
+
+on:
+  schedule:
+    - cron: '0 7 * * 1'  # weekly Monday 07:00 UTC
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: osint-report
+  cancel-in-progress: true
+
+jobs:
+  report:
+    name: Generate OSINT report & open issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    env:
+      MARIDB_DATA_DIR: data/processed
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Pull watchlists from R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+        run: |
+          uv run python scripts/sync_r2.py pull-watchlists \
+            || { echo "::error::Failed to pull watchlists from R2"; exit 1; }
+
+      - name: Generate OSINT report
+        id: report
+        run: |
+          uv run python scripts/generate_osint_report.py \
+            --watchlist data/processed/candidate_watchlist.parquet \
+            --top 50 \
+            --out /tmp/osint_report.md
+          echo "report_path=/tmp/osint_report.md" >> "$GITHUB_OUTPUT"
+
+      - name: Open GitHub Issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          title="[OSINT Check] Watchlist — $(date -u +%Y-%m-%d)"
+          gh issue create \
+            --title "$title" \
+            --body-file /tmp/osint_report.md \
+            --label "osint" \
+            --repo "$GITHUB_REPOSITORY" \
+            || echo "::warning::Could not create issue (label may not exist — create 'osint' label to enable)"
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: osint-report-${{ github.run_id }}
+          path: /tmp/osint_report.md
+          retention-days: 30
