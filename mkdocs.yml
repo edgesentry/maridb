@@ -1,6 +1,6 @@
-site_name: maridb
-site_description: Maritime data layer — vessel, voyage, cargo, and AIS ingestion and transformation pipelines.
-site_url: https://edgesentry.github.io/maridb/
+site_name: indago
+site_description: Multi-domain OSINT data layer — ingestion, transformation, and distribution of open-source intelligence.
+site_url: https://edgesentry.github.io/indago/
 repo_url: https://github.com/edgesentry/indago
 repo_name: edgesentry/indago
 edit_uri: edit/main/docs/
@@ -26,5 +26,28 @@ theme:
 
 nav:
   - Home: index.md
-  - Pipeline: pipeline.md
-  - R2 Buckets: r2-buckets.md
+  - Design:
+    - Analytics Overview: analytics-overview.md
+    - Feature Engineering: feature-engineering.md
+    - Scoring Model: scoring-model.md
+    - Triage Governance: triage-governance.md
+    - Field Investigation: field-investigation.md
+    - Causal Analysis: causal-analysis.md
+  - Operations:
+    - Pipeline (indago): pipeline.md
+    - Pipeline Catalog: pipeline-catalog.md
+    - Pipeline Operations: pipeline-operations.md
+    - Regional Playbooks: regional-playbooks.md
+    - R2 Buckets: r2-buckets.md
+    - R2 Data Layout: r2-data-layout.md
+    - SOP: sop.md
+    - Deployment Cost & Scaling: cost-scaling.md
+  - Validation:
+    - Backtesting Validation: backtesting-validation.md
+    - Evaluation Metrics: evaluation-metrics.md
+    - Precision Improvement Plan: precision-improvement-plan.md
+    - Pre-Label Governance: prelabel-governance.md
+    - Backtracking Runbook: backtracking-runbook.md
+    - Trial Specification: trial-specification.md
+  - Reference:
+    - Study Guide: study-guide.md
