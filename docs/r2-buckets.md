@@ -1,4 +1,4 @@
-# maridb — R2 Bucket Architecture
+# indago — R2 Bucket Architecture
 
 **Updated:** 2026-04-25
 
@@ -34,7 +34,7 @@
 Apps read directly from their own bucket. documaris also reads vessel/voyage/cargo
 directly from `maridb-public` — no copy needed for those.
 
-## maridb-public partition layout
+## indago-public partition layout
 
 ```
 maridb-public/

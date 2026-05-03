@@ -1,17 +1,30 @@
-# maridb
+# indago
 
-**Maritime data layer — vessel, voyage, cargo, and AIS ingestion and transformation pipelines.**
+*indago* — Latin: to investigate, to track, to follow a trail. Root of "investigation."
 
-maridb is the shared data foundation for the edgesentry product stack. It collects and transforms raw vessel, voyage, cargo, and AIS data into structured Parquet datasets distributed via Cloudflare R2.
+**Multi-domain OSINT data layer — ingestion, transformation, and distribution of open-source intelligence across maritime, corporate, sanctions, and trade domains.**
+
+indago is the shared data foundation for the edgesentry product stack. It collects and transforms raw signals from multiple open-source intelligence domains into structured Parquet datasets distributed via Cloudflare R2.
+
+### Domains
+
+| Domain | Sources | Output |
+|---|---|---|
+| **Maritime** | AIS (NMEA 0183, AIS stream), port call records | Vessel tracks, voyage events, CPA/DCPA features |
+| **Corporate** | Beneficial ownership registries, company filings | Ownership depth, UBO chains, corporate graph |
+| **Sanctions & compliance** | OFAC, UN, EU, MAS lists | Sanctions distance, watchlist membership, cluster ratios |
+| **Trade & cargo** | Cargo manifests, HS codes, port declarations | Cargo risk profiles, trade route anomalies |
+
+Each domain produces Parquet partitions in R2, consumed by downstream products without further pipeline dependency.
 
 ## Product stack
 
 | Product | Role |
 |---|---|
-| **maridb** | Data layer — ingest, transform, validate, distribute to public R2 buckets |
-| **arktrace** | Shadow fleet detection — reads from `arktrace-public` R2 |
-| **documaris** | Port call document generation — reads from `documaris-public` and `maridb-public` R2 |
-| **edgesentry** | Physical layer — robotic inspection, sensor deployment |
+| **indago** | OSINT data layer — ingest, transform, validate, distribute to R2 buckets |
+| **arktrace** | Shadow fleet detection — reads maritime + sanctions features from R2 |
+| **documaris** | Port call document generation — reads voyage and cargo data from R2 |
+| **clarus** | Physical safety layer — reads vessel behavioral features from R2 |
 
 ## R2 buckets
 
@@ -28,7 +41,7 @@ See [`docs/r2-buckets.md`](docs/r2-buckets.md) for full partition layout and dat
 ## Repository layout
 
 ```
-maridb/
+indago/
   docs/
     r2-buckets.md      # bucket architecture, partition layout, data flow
   pipelines/           # ingest and transformation pipeline implementations
@@ -39,7 +52,7 @@ maridb/
 
 ## Related issues
 
-- [#1 — Implement data pipelines](https://github.com/edgesentry/maridb/issues/1)
-- [#2 — R2 bucket architecture](https://github.com/edgesentry/maridb/issues/2)
+- [#1 — Implement data pipelines](https://github.com/edgesentry/indago/issues/1)
+- [#2 — R2 bucket architecture](https://github.com/edgesentry/indago/issues/2)
 - [arktrace#517 — Decouple arktrace from data pipelines](https://github.com/edgesentry/arktrace/issues/517)
 - [documaris#8 — documaris-public R2 bucket schema](https://github.com/edgesentry/documaris/issues/8)

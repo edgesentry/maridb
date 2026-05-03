@@ -36,7 +36,7 @@ _DUMMY_MMSIS: frozenset[str] = frozenset(
 )
 
 # MARIDB_DATA_DIR is the processed data dir (e.g. data/processed in CI,
-# ~/.maridb/data/processed locally). Watchlists live under score/ within it.
+# ~/.indago/data/processed locally). Watchlists live under score/ within it.
 _data_dir = Path(
     os.getenv("MARIDB_DATA_DIR") or os.getenv("DATA_DIR")
     or (Path.home() / ".maridb" / "data" / "processed")

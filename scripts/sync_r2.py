@@ -149,7 +149,7 @@ def _resolve_default_data_dir() -> str:
 
     Resolution order:
     1. ``MARIDB_DATA_DIR`` env var (explicit override)
-    2. ``~/.maridb/data`` (canonical user-level data location)
+    2. ``~/.indago/data`` (canonical user-level data location)
     """
     import os as _os
 
@@ -1671,13 +1671,13 @@ def main() -> int:
         "--data-dir",
         default=str(Path.home() / ".maridb" / "data" / "raw" / "ais"),
         metavar="DIR",
-        help="Directory containing raw AIS .duckdb files (default: ~/.maridb/data/raw/ais)",
+        help="Directory containing raw AIS .duckdb files (default: ~/.indago/data/raw/ais)",
     )
     push_ais_p.add_argument(
         "--staging-dir",
         default=str(Path.home() / ".maridb" / "data" / "staging" / "ais"),
         metavar="DIR",
-        help="Local staging directory for Parquet partitions before upload (default: ~/.maridb/data/staging/ais)",
+        help="Local staging directory for Parquet partitions before upload (default: ~/.indago/data/staging/ais)",
     )
     push_ais_p.add_argument(
         "--regions", default=None, metavar="REGIONS",
@@ -1692,7 +1692,7 @@ def main() -> int:
         "--data-dir",
         default=str(Path.home() / ".maridb" / "data" / "downloads"),
         metavar="DIR",
-        help="Local directory to download partitions into (default: ~/.maridb/data/downloads)",
+        help="Local directory to download partitions into (default: ~/.indago/data/downloads)",
     )
     pull_ais_p.add_argument("--regions", default=None, metavar="REGIONS")
     pull_ais_p.add_argument("--days", type=int, default=60, metavar="N",

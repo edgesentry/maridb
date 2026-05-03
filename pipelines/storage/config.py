@@ -8,7 +8,7 @@ Environment variables
 ---------------------
 USE_S3                Set to "1" or "true" to route reads/writes to R2.
                       Default: off (local disk).
-MARIDB_DATA_DIR       Override the local data directory (default: ~/.maridb/data).
+MARIDB_DATA_DIR       Override the local data directory (default: ~/.indago/data).
 S3_BUCKET             Bucket name (default: maridb-public)
 S3_ENDPOINT           Custom endpoint URL for R2 / MinIO
 AWS_ACCESS_KEY_ID

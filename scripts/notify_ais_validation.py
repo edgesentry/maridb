@@ -67,7 +67,7 @@ def main() -> int:
     active_passing = most_recent_day.get("active_regions_passing", [])
 
     run_id = os.getenv("GITHUB_RUN_ID", "")
-    repo = os.getenv("GITHUB_REPOSITORY", "edgesentry/maridb")
+    repo = os.getenv("GITHUB_REPOSITORY", "edgesentry/indago")
     run_url = (
         f"https://github.com/{repo}/actions/runs/{run_id}"
         if run_id else f"https://github.com/{repo}/actions"
