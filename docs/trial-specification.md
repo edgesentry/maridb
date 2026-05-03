@@ -34,7 +34,7 @@ The challenge statement asks for *"relevant proprietary datasets to detect MPOL 
 | Geopolitical events (GDELT) | GDELT Project | CSV (zipped, 15-min batches) | Daily | ~100k events/day |
 | Bathymetric depth mask | GEBCO | NetCDF / GeoTIFF | One-off | ~8 GB |
 
-**Data storage:** AIS positions and sanctions entities are loaded into DuckDB (`data/processed/mpol.duckdb`). Vessel ownership chains are stored as a Lance Graph (`data/processed/mpol_graph/`). All output Parquet files are written to MinIO / S3-compatible object storage. See [docs/architecture.md](architecture.md) for the full storage design.
+**Data storage:** AIS positions and sanctions entities are loaded into DuckDB (`data/processed/mpol.duckdb`). Vessel ownership chains are stored as a Lance Graph (`data/processed/mpol_graph/`). All output Parquet files are written to MinIO / S3-compatible object storage. See [docs/architecture.md](https://edgesentry.github.io/arktrace/architecture/) for the full storage design.
 
 ---
 
@@ -53,7 +53,7 @@ The challenge statement asks for *"relevant proprietary datasets to detect MPOL 
 
 The pipeline runs fully in-process — no external database server is required. DuckDB, LanceDB, and Lance Graph are all embedded, serverless libraries.
 
-**Docker deployment (recommended):** `docker compose up` starts the full stack (MinIO object store + FastAPI dashboard) in two containers. See [docs/deployment.md](deployment.md).
+**Docker deployment (recommended):** `docker compose up` starts the full stack (MinIO object store + FastAPI dashboard) in two containers. See [docs/deployment.md](https://edgesentry.github.io/arktrace/deployment/).
 
 ### Edge deployment — Phase B (patrol vessel / UAV ground station)
 
@@ -128,8 +128,8 @@ The Precision@50 target of 0.60 represents a **6× lift** over the ~0.10 base ra
 
 ## Related documents
 
-- [docs/architecture.md](architecture.md) — system design and storage layer
-- [docs/deployment.md](deployment.md) — Docker and bare-metal setup instructions
+- [docs/architecture.md](https://edgesentry.github.io/arktrace/architecture/) — system design and storage layer
+- [docs/deployment.md](https://edgesentry.github.io/arktrace/deployment/) — Docker and bare-metal setup instructions
 - [docs/evaluation-metrics.md](evaluation-metrics.md) — metric definitions and validated baselines
 - [docs/field-investigation.md](field-investigation.md) — Phase B patrol vessel sensor stack
 - [docs/regional-playbooks.md](regional-playbooks.md) — per-region AIS bbox and weight tuning

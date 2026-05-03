@@ -37,7 +37,7 @@ The pipeline runs fully in-process with no external database server. DuckDB, Lan
 | Regional (e.g. SE Asia, 3–5 chokepoints) | ~20k | ~80 GB | 2–4 CPU cores | ~$150–$400 (cloud) |
 | Global (all 5 major regions) | ~100k | ~400 GB | 4–8 CPU cores or parallel VMs | ~$400–$1,000 (cloud) |
 
-**On-premises deployment** (port operations centre server): hardware cost is a one-off CapEx; ongoing cost is electricity and maintenance only. The Docker Compose stack (`docker compose up`) brings up the full system in two containers. See [docs/deployment.md](deployment.md).
+**On-premises deployment** (port operations centre server): hardware cost is a one-off CapEx; ongoing cost is electricity and maintenance only. The Docker Compose stack (`docker compose up`) brings up the full system in two containers. See [docs/deployment.md](https://edgesentry.github.io/arktrace/deployment/).
 
 Object storage (MinIO self-hosted or S3-compatible): ~$0.023/GB/month on AWS S3; ~$0 on-prem. At global scale (~400 GB/month active data): < $10/month.
 
@@ -112,7 +112,7 @@ Following successful PoC completion, ongoing engineering and operations transiti
 
 ## Related Documents
 
-- [docs/deployment.md](deployment.md) — infrastructure setup and Docker Compose configuration
+- [docs/deployment.md](https://edgesentry.github.io/arktrace/deployment/) — infrastructure setup and Docker Compose configuration
 - [docs/field-investigation.md](field-investigation.md) — Phase B hardware tiers and sensor stack
 - [docs/trial-specification.md](trial-specification.md) — trial demonstration strategy and platform requirements
 - [docs/regional-playbooks.md](regional-playbooks.md) — per-region AIS bbox, DuckDB paths, and weight tuning
