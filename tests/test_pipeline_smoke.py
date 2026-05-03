@@ -4,10 +4,7 @@ Verify that pipeline modules import cleanly, storage config resolves correctly,
 and the distribute validation gate rejects bad data without hitting R2.
 """
 
-import os
-
 import polars as pl
-import pytest
 
 from pipelines.storage import config
 
@@ -53,11 +50,13 @@ class TestDistributeValidation:
 
         from pipelines.distribute.push import _validate
 
-        df = pl.DataFrame({
-            "vessel_id": ["IMO9876543", None],
-            "date": ["2026-04-25", "2026-04-25"],
-            "positions_count": [100, 200],
-        })
+        df = pl.DataFrame(
+            {
+                "vessel_id": ["IMO9876543", None],
+                "date": ["2026-04-25", "2026-04-25"],
+                "positions_count": [100, 200],
+            }
+        )
         result = _validate(df, required_columns=["vessel_id", "date", "positions_count"])
         assert not result.ok
         assert any("vessel_id" in e for e in result.errors)
@@ -70,7 +69,9 @@ class TestDistributeValidation:
         df = pl.DataFrame({"vessel_id": [], "date": [], "positions_count": []}).cast(
             {"positions_count": pl.Int64}
         )
-        result = _validate(df, required_columns=["vessel_id", "date", "positions_count"], min_rows=1)
+        result = _validate(
+            df, required_columns=["vessel_id", "date", "positions_count"], min_rows=1
+        )
         assert not result.ok
 
     def test_push_accepts_valid_data(self, tmp_path, monkeypatch):
@@ -78,11 +79,13 @@ class TestDistributeValidation:
 
         from pipelines.distribute.push import _validate
 
-        df = pl.DataFrame({
-            "vessel_id": ["IMO9876543"],
-            "date": ["2026-04-25"],
-            "positions_count": [1842],
-        })
+        df = pl.DataFrame(
+            {
+                "vessel_id": ["IMO9876543"],
+                "date": ["2026-04-25"],
+                "positions_count": [1842],
+            }
+        )
         result = _validate(df, required_columns=["vessel_id", "date", "positions_count"])
         assert result.ok
         assert result.errors == []
@@ -94,13 +97,15 @@ class TestDistributeValidation:
         # Write valid source parquet at the maridb-public key path (DATA_DIR/voyage-evidence/latest.parquet)
         source_dir = tmp_path / "voyage-evidence"
         source_dir.mkdir()
-        df = pl.DataFrame({
-            "vessel_id": ["IMO9876543"],
-            "voyage_id": ["V001"],
-            "track_start_utc": ["2026-04-23T10:00:00Z"],
-            "track_end_utc": ["2026-04-28T05:55:00Z"],
-            "positions_count": [1842],
-        })
+        df = pl.DataFrame(
+            {
+                "vessel_id": ["IMO9876543"],
+                "voyage_id": ["V001"],
+                "track_start_utc": ["2026-04-23T10:00:00Z"],
+                "track_end_utc": ["2026-04-28T05:55:00Z"],
+                "positions_count": [1842],
+            }
+        )
         df.write_parquet(source_dir / "latest.parquet")
 
         from pipelines.distribute.push import push_documaris_voyage_evidence
@@ -110,7 +115,6 @@ class TestDistributeValidation:
 
         written = pl.read_parquet(source_dir / "latest.parquet")
         assert written["vessel_id"][0] == "IMO9876543"
-
 
 
 class TestIngestImports:

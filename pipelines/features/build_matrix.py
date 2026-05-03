@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 from pipelines.features.ais_behavior import DEFAULT_DB_PATH, compute_ais_features
 from pipelines.features.eo_fusion import compute_eo_features
+from pipelines.features.graph_store import _dataset_path
 from pipelines.features.identity import compute_identity_features
 from pipelines.features.ownership_graph import (
     _apply_direct_sanctions_fallback,
@@ -22,7 +23,6 @@ from pipelines.features.ownership_graph import (
 )
 from pipelines.features.sar_detections import compute_unmatched_sar_detections
 from pipelines.features.trade_mismatch import compute_trade_features
-from pipelines.ingest.graph_store import _dataset_path
 
 load_dotenv()
 
@@ -33,6 +33,10 @@ DEFAULTS = {
     "sts_candidate_count": 0,
     "port_call_ratio": 0.5,
     "loitering_hours_30d": 0.0,
+    "chokepoint_exit_gap_count": 0,
+    "ais_pre_gap_regularity": 1.0,
+    "imo_type_mismatch": False,
+    "imo_scrapped_flag": False,
     "flag_changes_2y": 0,
     "name_changes_2y": 0,
     "owner_changes_2y": 0,

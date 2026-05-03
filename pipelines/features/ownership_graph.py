@@ -94,9 +94,9 @@ def _compute_sanctions_distance(tables: dict) -> pl.DataFrame:
             )
             if sanctioned_via_grandparent:
                 three_hop_vessels = (
-                    vessel_companies.filter(
-                        pl.col("dst_id").is_in(sanctioned_via_grandparent)
-                    )["src_id"]
+                    vessel_companies.filter(pl.col("dst_id").is_in(sanctioned_via_grandparent))[
+                        "src_id"
+                    ]
                     .unique()
                     .to_list()
                 )

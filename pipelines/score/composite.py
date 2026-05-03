@@ -77,6 +77,10 @@ FEATURE_VALUE_COLUMNS = [
     "unmatched_sar_detections_30d",
     "eo_dark_count_30d",
     "eo_ais_mismatch_ratio",
+    "imo_type_mismatch",
+    "imo_scrapped_flag",
+    "chokepoint_exit_gap_count",
+    "ais_pre_gap_regularity",
 ]
 
 
@@ -610,8 +614,6 @@ def compute_composite_scores(
             "cluster_label",
             "baseline_noise_score",
         ]
-    ).with_columns(
-        pl.col("confidence").alias("composite_score")
     ).sort("confidence", descending=True)
 
 

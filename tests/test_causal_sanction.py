@@ -86,7 +86,7 @@ def _seed_causal_data(db_path: str) -> None:
         # Base timestamps for control vessels (2 gaps each period, uniform)
         # for treated vessels: 2 gaps pre, 12 gaps post (large treatment effect)
 
-        pre_ann = datetime(2019, 4, 8, tzinfo=UTC)   # day before pre-window end
+        pre_ann = datetime(2019, 4, 8, tzinfo=UTC)  # day before pre-window end
         post_ann = datetime(2019, 5, 9, tzinfo=UTC)  # day after announcement
 
         def _insert_positions(mmsi: str, base: datetime, gap_hours: float, n_obs: int):

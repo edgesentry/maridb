@@ -58,9 +58,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 JSONL_PATH = REPO_ROOT / "data" / "raw" / "sanctions" / "opensanctions_entities.jsonl"
 
 # Watchlists are pulled from R2 to the canonical user data directory.
-# Pipeline operators can override with MARIDB_DATA_DIR or DATA_DIR.
+# Pipeline operators can override with ARKTRACE_DATA_DIR or DATA_DIR.
 _watchlist_dir = Path(
-    os.getenv("MARIDB_DATA_DIR") or os.getenv("DATA_DIR") or (Path.home() / ".arktrace" / "data")
+    os.getenv("ARKTRACE_DATA_DIR") or os.getenv("DATA_DIR") or (Path.home() / ".arktrace" / "data")
 )
 
 WATCHLIST_BY_REGION = {
@@ -142,17 +142,7 @@ def _load_watchlist(paths: list[Path]) -> pl.DataFrame:
     parts = []
     for p in paths:
         if p.exists():
-            df = pl.read_parquet(p)
-            # Normalise all datetime columns to UTC so concat doesn't fail on
-            # timezone mismatches (e.g. Asia/Singapore vs Etc/UTC).
-            for col in df.columns:
-                if df[col].dtype == pl.Datetime or (
-                    hasattr(df[col].dtype, "time_zone") and df[col].dtype.time_zone
-                ):
-                    df = df.with_columns(
-                        pl.col(col).dt.convert_time_zone("UTC")
-                    )
-            parts.append(df)
+            parts.append(pl.read_parquet(p))
     if not parts:
         return pl.DataFrame()
     combined = pl.concat(parts, how="vertical_relaxed")

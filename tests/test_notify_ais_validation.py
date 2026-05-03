@@ -1,4 +1,5 @@
 """Tests for notify_ais_validation.py — subject line date and active region display."""
+
 import importlib.util
 import json
 from pathlib import Path
@@ -17,12 +18,23 @@ def _load_notify():
 
 def _make_day_result(date="2026-05-02", active_passing=None, required=5, region_results=None):
     if active_passing is None:
-        active_passing = ["japansea", "singapore", "europe", "blacksea", "middleeast", "gulfofguinea"]
+        active_passing = [
+            "japansea",
+            "singapore",
+            "europe",
+            "blacksea",
+            "middleeast",
+            "gulfofguinea",
+        ]
     return {
         "date": date,
         "pass": True,
         "active_regions_passing": active_passing,
-        "coverage_check": {"pass": True, "active_passing": len(active_passing), "required": required},
+        "coverage_check": {
+            "pass": True,
+            "active_passing": len(active_passing),
+            "required": required,
+        },
         "region_results": region_results or [],
     }
 
@@ -51,11 +63,21 @@ def test_subject_uses_most_recent_date(tmp_path, monkeypatch):
     subjects = []
 
     class FakeSMTP:
-        def __init__(self, *a, **kw): pass
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-        def starttls(self): pass
-        def login(self, *a): pass
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def starttls(self):
+            pass
+
+        def login(self, *a):
+            pass
+
         def sendmail(self, _from, _to, msg):
             for line in msg.splitlines():
                 if line.startswith("Subject:"):
@@ -90,11 +112,21 @@ def test_subject_falls_back_gracefully_when_date_missing(tmp_path, monkeypatch):
     subjects = []
 
     class FakeSMTP:
-        def __init__(self, *a, **kw): pass
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-        def starttls(self): pass
-        def login(self, *a): pass
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def starttls(self):
+            pass
+
+        def login(self, *a):
+            pass
+
         def sendmail(self, _from, _to, msg):
             for line in msg.splitlines():
                 if line.startswith("Subject:"):
@@ -129,11 +161,21 @@ def test_subject_uses_target_date_as_fallback(tmp_path, monkeypatch):
     subjects = []
 
     class FakeSMTP:
-        def __init__(self, *a, **kw): pass
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-        def starttls(self): pass
-        def login(self, *a): pass
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def starttls(self):
+            pass
+
+        def login(self, *a):
+            pass
+
         def sendmail(self, _from, _to, msg):
             for line in msg.splitlines():
                 if line.startswith("Subject:"):
@@ -158,6 +200,7 @@ def test_subject_uses_target_date_as_fallback(tmp_path, monkeypatch):
 def _decode_body(raw_msg: str) -> str:
     """Extract and decode the HTML body from a raw MIME message string."""
     import email
+
     msg = email.message_from_string(raw_msg)
     for part in msg.walk():
         if part.get_content_type() == "text/html":
@@ -168,13 +211,24 @@ def _decode_body(raw_msg: str) -> str:
 
 def _fake_smtp_capture(bodies):
     class FakeSMTP:
-        def __init__(self, *a, **kw): pass
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-        def starttls(self): pass
-        def login(self, *a): pass
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def starttls(self):
+            pass
+
+        def login(self, *a):
+            pass
+
         def sendmail(self, _from, _to, msg):
             bodies.append(_decode_body(msg))
+
     return FakeSMTP
 
 
@@ -191,7 +245,14 @@ def _set_smtp_env(monkeypatch):
 def test_active_regions_read_from_day_results(tmp_path, monkeypatch):
     """Active regions must come from day_results[-1], not the top level."""
     day = _make_day_result(
-        active_passing=["japansea", "singapore", "europe", "blacksea", "middleeast", "gulfofguinea"],
+        active_passing=[
+            "japansea",
+            "singapore",
+            "europe",
+            "blacksea",
+            "middleeast",
+            "gulfofguinea",
+        ],
         required=5,
     )
     report = _make_report(day_results=[day])
@@ -280,6 +341,7 @@ def test_zero_row_checks_show_dash(tmp_path, monkeypatch):
     # The row_color is green (pass=True) so we check the cell content
     assert "—" in body, "zero-row region checks must show '—' not '❌'"
     # Should not show ❌ for the data quality checks (only possibly for status)
-    japansea_section = body[body.find("japansea"):][:200]
-    assert japansea_section.count("❌") == 0, \
+    japansea_section = body[body.find("japansea") :][:200]
+    assert japansea_section.count("❌") == 0, (
         f"zero-row region should have no ❌ in quality checks: {japansea_section}"
+    )

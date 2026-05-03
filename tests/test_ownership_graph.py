@@ -206,31 +206,53 @@ def _make_distance_tables(
         schema=NODE_SCHEMAS["Vessel"],
     )
     sb_table = pa.table(
-        {"src_id": sanctioned_ids, "dst_id": ["regime"] * len(sanctioned_ids),
-         "list": [""] * len(sanctioned_ids), "date": [""] * len(sanctioned_ids)},
+        {
+            "src_id": sanctioned_ids,
+            "dst_id": ["regime"] * len(sanctioned_ids),
+            "list": [""] * len(sanctioned_ids),
+            "date": [""] * len(sanctioned_ids),
+        },
         schema=REL_SCHEMAS["SANCTIONED_BY"],
     )
-    ob_table = pa.table(
-        {"src_id": [r[0] for r in owned_by], "dst_id": [r[1] for r in owned_by],
-         "since": [""] * len(owned_by), "until": [""] * len(owned_by)},
-        schema=REL_SCHEMAS["OWNED_BY"],
-    ) if owned_by else pa.table(
-        {"src_id": [], "dst_id": [], "since": [], "until": []},
-        schema=REL_SCHEMAS["OWNED_BY"],
+    ob_table = (
+        pa.table(
+            {
+                "src_id": [r[0] for r in owned_by],
+                "dst_id": [r[1] for r in owned_by],
+                "since": [""] * len(owned_by),
+                "until": [""] * len(owned_by),
+            },
+            schema=REL_SCHEMAS["OWNED_BY"],
+        )
+        if owned_by
+        else pa.table(
+            {"src_id": [], "dst_id": [], "since": [], "until": []},
+            schema=REL_SCHEMAS["OWNED_BY"],
+        )
     )
-    mb_table = pa.table(
-        {"src_id": [r[0] for r in managed_by], "dst_id": [r[1] for r in managed_by],
-         "since": [""] * len(managed_by), "until": [""] * len(managed_by)},
-        schema=REL_SCHEMAS["MANAGED_BY"],
-    ) if managed_by else pa.table(
-        {"src_id": [], "dst_id": [], "since": [], "until": []},
-        schema=REL_SCHEMAS["MANAGED_BY"],
+    mb_table = (
+        pa.table(
+            {
+                "src_id": [r[0] for r in managed_by],
+                "dst_id": [r[1] for r in managed_by],
+                "since": [""] * len(managed_by),
+                "until": [""] * len(managed_by),
+            },
+            schema=REL_SCHEMAS["MANAGED_BY"],
+        )
+        if managed_by
+        else pa.table(
+            {"src_id": [], "dst_id": [], "since": [], "until": []},
+            schema=REL_SCHEMAS["MANAGED_BY"],
+        )
     )
-    cb_table = pa.table(
-        {"src_id": [r[0] for r in controlled_by], "dst_id": [r[1] for r in controlled_by]},
-        schema=REL_SCHEMAS["CONTROLLED_BY"],
-    ) if controlled_by else pa.table(
-        {"src_id": [], "dst_id": []}, schema=REL_SCHEMAS["CONTROLLED_BY"]
+    cb_table = (
+        pa.table(
+            {"src_id": [r[0] for r in controlled_by], "dst_id": [r[1] for r in controlled_by]},
+            schema=REL_SCHEMAS["CONTROLLED_BY"],
+        )
+        if controlled_by
+        else pa.table({"src_id": [], "dst_id": []}, schema=REL_SCHEMAS["CONTROLLED_BY"])
     )
     return {
         "Vessel": vessel_table,
@@ -246,7 +268,9 @@ def test_sanctions_distance_direct():
     tables = _make_distance_tables(
         vessel_mmsis=["111111111"],
         sanctioned_ids=["111111111"],
-        owned_by=[], managed_by=[], controlled_by=[],
+        owned_by=[],
+        managed_by=[],
+        controlled_by=[],
     )
     result = _compute_sanctions_distance(tables)
     assert result.filter(pl.col("mmsi") == "111111111")["sanctions_distance"][0] == 0
@@ -258,7 +282,8 @@ def test_sanctions_distance_one_hop_owned_by():
         vessel_mmsis=["222222222"],
         sanctioned_ids=["company-A"],
         owned_by=[("222222222", "company-A")],
-        managed_by=[], controlled_by=[],
+        managed_by=[],
+        controlled_by=[],
     )
     result = _compute_sanctions_distance(tables)
     assert result.filter(pl.col("mmsi") == "222222222")["sanctions_distance"][0] == 1
@@ -299,8 +324,8 @@ def test_sanctions_distance_three_hop_ubo():
         owned_by=[("555555555", "child-corp")],
         managed_by=[],
         controlled_by=[
-            ("child-corp", "parent-corp"),      # child → parent
-            ("parent-corp", "grandparent-corp"), # parent → grandparent (sanctioned)
+            ("child-corp", "parent-corp"),  # child → parent
+            ("parent-corp", "grandparent-corp"),  # parent → grandparent (sanctioned)
         ],
     )
     result = _compute_sanctions_distance(tables)

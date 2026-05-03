@@ -68,19 +68,11 @@ Commands
                       without running the full pipeline locally
   pull-reviews        download merged reviews from R2 and upsert into the local DuckDB
                       vessel_reviews table (read-only; merging is a commercial feature)
-  push-custom-feeds   upload files from _inputs/custom_feeds/ to the private
-                      arktrace-private-capvista R2 bucket (requires AWS_ACCESS_KEY_ID /
                       AWS_SECRET_ACCESS_KEY — same key used for maridb-public)
-  pull-custom-feeds   download all feed files from the private arktrace-private-capvista R2
                       bucket into _inputs/custom_feeds/ — same AWS_* credentials; skips
                       gracefully when absent (forks / local dev without access)
   push-ducklake-public  upload DuckLake catalog.duckdb + data/ Parquet files to
                       maridb-public/ (overwrites on every run — no rotation)
-  push-ducklake-private upload DuckLake catalog.duckdb + private output files to
-                      arktrace-private-capvista/outputs/ (authenticated analysts only)
-  push-ais-dbs        upload regional AIS .duckdb files to the private R2 bucket as a
-                      backup; skips files that are older than the remote copy
-  pull-ais-dbs        download regional AIS .duckdb files from the private R2 bucket;
                       skips files that are older than the local copy
   list                show all snapshot zips and shared objects in R2
 
@@ -92,7 +84,6 @@ Env vars (loaded from .env automatically)
   AWS_ACCESS_KEY_ID       R2 access key ID (required for push commands and pull-custom-feeds)
   AWS_SECRET_ACCESS_KEY   R2 secret access key (required for push commands and pull-custom-feeds)
                           The same key must have Object Read & Write on both maridb-public
-                          and arktrace-private-capvista.  App users never need credentials —
                           they only pull from the public bucket anonymously.
 
 Examples
@@ -109,13 +100,7 @@ Examples
   uv run python scripts/sync_r2.py pull-watchlists           # pull watchlists.zip (used by CI)
   uv run python scripts/sync_r2.py pull-demo                 # pull demo bundle (no credentials)
   uv run python scripts/sync_r2.py pull-reviews              # download merged public reviews from R2
-  uv run python scripts/sync_r2.py push-custom-feeds         # upload feeds to private bucket
-  uv run python scripts/sync_r2.py pull-custom-feeds         # pull feeds from private bucket
   uv run python scripts/sync_r2.py push-ducklake-public      # upload DuckLake catalog to public bucket
-  uv run python scripts/sync_r2.py push-ducklake-private     # upload private outputs to private bucket
-  uv run python scripts/sync_r2.py push-ais-dbs              # back up all active AIS .duckdb to private R2
-  uv run python scripts/sync_r2.py push-ais-dbs --regions japansea,blacksea,middleeast
-  uv run python scripts/sync_r2.py pull-ais-dbs              # restore AIS DBs on a new machine
   uv run python scripts/sync_r2.py list                      # show all generations in R2
 """
 
@@ -855,6 +840,8 @@ def cmd_pull_watchlists(args: argparse.Namespace) -> int:
 
     print(f"Done. {downloaded / 1_048_576:.2f} MB downloaded.")
     return 0
+
+
 def cmd_push_demo(args: argparse.Namespace) -> int:
     """Upload the fixed-key demo bundle to R2 (requires credentials).
 
@@ -946,6 +933,8 @@ def cmd_pull_demo(args: argparse.Namespace) -> int:
     print(f"Done. {size_mb:.2f} MB downloaded.")
     print("\nData synced. Open the dashboard:\n  https://arktrace.edgesentry.io")
     return 0
+
+
 def cmd_push_ducklake_public(args: argparse.Namespace) -> int:
     """Upload DuckLake catalog.duckdb + data/ Parquet files to maridb-public/.
 
@@ -1013,9 +1002,77 @@ def cmd_push_ducklake_public(args: argparse.Namespace) -> int:
     return 0
 
 
-_GFW_EO_R2_PREFIX = "gfw-eo/"  # private bucket sub-prefix for pre-fetched GFW EO parquets
-_GEBCO_MASKS_R2_PREFIX = "gebco-masks/"  # private bucket sub-prefix for GEBCO depth masks
+_DUCKLAKE_AIS_CATALOG = "ducklake/catalog.duckdb"
+_DUCKLAKE_AIS_DATA = "ducklake/data"
 _AIS_DB_MIN_SIZE_BYTES = 1_048_576  # skip placeholder DBs smaller than 1 MB
+_GEBCO_R2_PREFIX = "gebco-masks/"  # maridb-public sub-prefix for GEBCO depth masks
+
+
+def cmd_push_gebco_masks(args: argparse.Namespace) -> int:
+    """Upload GEBCO depth-mask Parquets to maridb-public/gebco-masks/.
+
+    GEBCO (General Bathymetric Chart of the Oceans) is freely published by the
+    British Oceanographic Data Centre — pure OSINT, no licence restrictions on
+    redistribution.  Run ``scripts/build_gebco_mask.py`` first to generate the
+    ``{region}_deep_cells.parquet`` files.
+    """
+    data_dir = Path(args.data_dir)
+    parquets = sorted(data_dir.glob("*_deep_cells.parquet"))
+    if not parquets:
+        print(
+            f"No *_deep_cells.parquet files found in {data_dir}. Run build_gebco_mask.py first.",
+            file=sys.stderr,
+        )
+        return 1
+
+    bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
+    fs = _build_r2_fs()
+    for p in parquets:
+        r2_key = f"{bucket}/{_GEBCO_R2_PREFIX}{p.name}"
+        size_kb = p.stat().st_size / 1024
+        print(f"  {p.name} ({size_kb:.1f} KB) → {r2_key} ...", end="", flush=True)
+        _upload_file(fs, p, r2_key)
+        print(" ✓")
+    print(f"\nDone. {len(parquets)} GEBCO mask(s) pushed to {bucket}/{_GEBCO_R2_PREFIX}")
+    return 0
+
+
+def cmd_pull_gebco_masks(args: argparse.Namespace) -> int:
+    """Download GEBCO depth-mask Parquets from maridb-public/gebco-masks/.
+
+    No credentials required — maridb-public is fully public.
+    """
+    import pyarrow.fs as pafs
+
+    data_dir = Path(args.data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
+    fs = _build_r2_fs(anonymous=True)
+    prefix = f"{bucket}/{_GEBCO_R2_PREFIX}"
+
+    try:
+        infos = fs.get_file_info(pafs.FileSelector(prefix, recursive=False))
+    except Exception as exc:
+        print(f"Error listing {prefix}: {exc}", file=sys.stderr)
+        return 1
+
+    parquets = [i for i in infos if i.type == pafs.FileType.File and i.path.endswith(".parquet")]
+    if not parquets:
+        print(
+            f"No GEBCO masks found at {prefix}. Run build_gebco_mask.py and push-gebco-masks first."
+        )
+        return 0
+
+    for info in parquets:
+        filename = Path(info.path).name
+        local_path = data_dir / filename
+        size_kb = info.size / 1024
+        print(f"  {filename} ({size_kb:.1f} KB) ...", end="", flush=True)
+        _download_file(fs, info.path, local_path)
+        print(" ✓")
+    print(f"\nDone. GEBCO masks restored to {data_dir}/")
+    return 0
 
 
 def _ais_db_candidates(data_dir: Path, regions: list[str] | None) -> list[Path]:
@@ -1046,156 +1103,6 @@ def _ais_db_candidates(data_dir: Path, regions: list[str] | None) -> list[Path]:
             continue
         candidates.append(p)
     return candidates
-
-
-def cmd_push_gebco_masks(args: argparse.Namespace) -> int:
-    """Upload GEBCO depth-mask parquets to arktrace-private-capvista/gebco-masks/.
-
-    Each file must be named ``{region_prefix}_deep_cells.parquet`` and live in
-    --data-dir.  Run ``scripts/build_gebco_mask.py`` first to generate them.
-    """
-    data_dir = Path(args.data_dir)
-    parquets = sorted(data_dir.glob("*_deep_cells.parquet"))
-    if not parquets:
-        print(
-            f"No *_deep_cells.parquet files found in {data_dir}. "
-            "Run scripts/build_gebco_mask.py first.",
-            file=sys.stderr,
-        )
-        return 1
-
-    fs = _build_r2_fs()
-    prefix = f"{_DEFAULT_BUCKET}/{_GEBCO_MASKS_R2_PREFIX}"
-    print(f"Uploading {len(parquets)} GEBCO mask(s) to {prefix}")
-    for p in parquets:
-        r2_path = f"{prefix}{p.name}"
-        size_mb = p.stat().st_size / 1_048_576
-        print(f"  {p.name} ({size_mb:.1f} MB) → {r2_path} ...", end="", flush=True)
-        _upload_file(fs, p, r2_path)
-        print(" ✓")
-    print(f"\nDone. GEBCO masks pushed to {prefix}")
-    return 0
-
-
-def cmd_pull_gebco_masks(args: argparse.Namespace) -> int:
-    """Download GEBCO depth-mask parquets from arktrace-private-capvista/gebco-masks/.
-
-    Files are written to --data-dir as ``{region_prefix}_deep_cells.parquet``.
-    The daily pipeline loads these to filter STS co-locations to deep water only.
-    """
-    if not (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")):
-        print(
-            "Error: AWS credentials not set — pull-gebco-masks requires private bucket access.",
-            file=sys.stderr,
-        )
-        return 1
-
-    import pyarrow.fs as pafs
-
-    data_dir = Path(args.data_dir)
-    data_dir.mkdir(parents=True, exist_ok=True)
-    fs = _build_r2_fs()
-    prefix = f"{_DEFAULT_BUCKET}/{_GEBCO_MASKS_R2_PREFIX}"
-
-    try:
-        infos = fs.get_file_info(pafs.FileSelector(prefix, recursive=False))
-    except Exception as exc:
-        print(f"Error listing {prefix}: {exc}", file=sys.stderr)
-        return 1
-
-    parquets = [i for i in infos if i.type == pafs.FileType.File and i.path.endswith(".parquet")]
-    if not parquets:
-        print(
-            f"No GEBCO masks found at {prefix} — run build_gebco_mask.py and push-gebco-masks first."
-        )
-        return 0
-
-    print(f"Found {len(parquets)} GEBCO mask(s) in {prefix}")
-    for info in parquets:
-        filename = Path(info.path).name
-        local_path = data_dir / filename
-        size_mb = info.size / 1_048_576
-        print(f"  {filename} ({size_mb:.1f} MB) ...", end="", flush=True)
-        _download_file(fs, info.path, local_path)
-        print(f" ✓ ({size_mb:.1f} MB)")
-    print(f"\nDone. GEBCO masks restored to {data_dir}/")
-    return 0
-
-
-def cmd_push_gfw_eo(args: argparse.Namespace) -> int:
-    """Upload pre-fetched GFW EO detection parquets to arktrace-private-capvista/gfw-eo/.
-
-    Each file must be named ``{region_prefix}_eo_detections.parquet`` and live
-    in --data-dir.  Run ``scripts/gfw_ingest.py`` first to generate them.
-    """
-    data_dir = Path(args.data_dir)
-    parquets = sorted(data_dir.glob("*_eo_detections.parquet"))
-    if not parquets:
-        print(
-            f"No *_eo_detections.parquet files found in {data_dir}. "
-            "Run scripts/gfw_ingest.py first.",
-            file=sys.stderr,
-        )
-        return 1
-
-    fs = _build_r2_fs()
-    prefix = f"{_DEFAULT_BUCKET}/{_GFW_EO_R2_PREFIX}"
-    print(f"Uploading {len(parquets)} GFW EO parquet(s) to {prefix}")
-    for p in parquets:
-        r2_path = f"{prefix}{p.name}"
-        size_kb = p.stat().st_size / 1024
-        print(f"  {p.name} ({size_kb:.1f} KB) → {r2_path} ...", end="", flush=True)
-        _upload_file(fs, p, r2_path)
-        print(" ✓")
-    print(f"\nDone. GFW EO parquets pushed to {prefix}")
-    return 0
-
-
-def cmd_pull_gfw_eo(args: argparse.Namespace) -> int:
-    """Download pre-fetched GFW EO detection parquets from arktrace-private-capvista/gfw-eo/.
-
-    Files are written to --data-dir as ``{region_prefix}_eo_detections.parquet``.
-    The daily pipeline ingests these instead of calling the GFW API directly.
-    """
-    if not (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")):
-        print(
-            "Error: AWS credentials not set — pull-gfw-eo requires private bucket access.",
-            file=sys.stderr,
-        )
-        return 1
-
-    import pyarrow.fs as pafs
-
-    data_dir = Path(args.data_dir)
-    data_dir.mkdir(parents=True, exist_ok=True)
-    fs = _build_r2_fs()
-    prefix = f"{_DEFAULT_BUCKET}/{_GFW_EO_R2_PREFIX}"
-
-    try:
-        infos = fs.get_file_info(pafs.FileSelector(prefix, recursive=False))
-    except Exception as exc:
-        print(f"Error listing {prefix}: {exc}", file=sys.stderr)
-        return 1
-
-    parquets = [i for i in infos if i.type == pafs.FileType.File and i.path.endswith(".parquet")]
-    if not parquets:
-        print(f"No GFW EO parquets found at {prefix} — run gfw-ingest workflow first.")
-        return 0
-
-    print(f"Found {len(parquets)} GFW EO parquet(s) in {prefix}")
-    for info in parquets:
-        filename = Path(info.path).name
-        local_path = data_dir / filename
-        size_kb = info.size / 1024
-        print(f"  {filename} ({size_kb:.1f} KB) ...", end="", flush=True)
-        _download_file(fs, info.path, local_path)
-        print(f" ✓ ({size_kb:.1f} KB)")
-    print(f"\nDone. GFW EO parquets restored to {data_dir}/")
-    return 0
-
-
-_DUCKLAKE_AIS_CATALOG = "ducklake/catalog.duckdb"
-_DUCKLAKE_AIS_DATA = "ducklake/data"
 
 
 def _ducklake_upload(local_catalog: Path, local_data: Path, bucket: str, fs: object) -> int:
@@ -1277,7 +1184,9 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
         except Exception as exc:
             print(f"  [skip] cannot open DB: {exc}", file=sys.stderr)
             continue
-        from datetime import UTC as _UTC, datetime as _datetime
+        from datetime import UTC as _UTC
+        from datetime import datetime as _datetime
+
         today_str = _datetime.now(_UTC).date().isoformat()
         if row_count == 0:
             # Upload an empty Parquet for today so the validation job can confirm
@@ -1287,7 +1196,9 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
                 "SELECT mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type "
                 "FROM ais_positions WHERE 1=0"
             ).to_arrow_table()
-            local_path = staging_dir / f"region={region}" / f"date={today_str}" / "positions.parquet"
+            local_path = (
+                staging_dir / f"region={region}" / f"date={today_str}" / "positions.parquet"
+            )
             local_path.parent.mkdir(parents=True, exist_ok=True)
             pq.write_table(empty_table, local_path, compression="snappy")
             try:
@@ -1321,7 +1232,9 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
                 "SELECT mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type "
                 "FROM ais_positions WHERE 1=0"
             ).to_arrow_table()
-            local_path = staging_dir / f"region={region}" / f"date={today_str}" / "positions.parquet"
+            local_path = (
+                staging_dir / f"region={region}" / f"date={today_str}" / "positions.parquet"
+            )
             local_path.parent.mkdir(parents=True, exist_ok=True)
             pq.write_table(empty_table, local_path, compression="snappy")
             r2_key = f"{bucket}/ais/region={region}/date={today_str}/positions.parquet"
@@ -1334,14 +1247,18 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
         if not to_upload:
             print(f"  all {len(dates)} date(s) already in R2 - skipping")
         else:
-            print(f"  staging + uploading {len(to_upload)} new date(s) ({len(existing_r2)} already in R2) ...")
+            print(
+                f"  staging + uploading {len(to_upload)} new date(s) ({len(existing_r2)} already in R2) ..."
+            )
             for date_str in to_upload:
                 table = con.execute(
                     "SELECT mmsi, timestamp, lat, lon, sog, cog, nav_status, ship_type "
                     "FROM ais_positions WHERE CAST(timezone('UTC', timestamp) AS DATE) = ? ORDER BY mmsi, timestamp",
                     [date_str],
                 ).to_arrow_table()
-                local_path = staging_dir / f"region={region}" / f"date={date_str}" / "positions.parquet"
+                local_path = (
+                    staging_dir / f"region={region}" / f"date={date_str}" / "positions.parquet"
+                )
                 local_path.parent.mkdir(parents=True, exist_ok=True)
                 pq.write_table(table, local_path, compression="snappy")
                 r2_key = f"{bucket}/ais/region={region}/date={date_str}/positions.parquet"
@@ -1366,7 +1283,9 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
             # Validate schema before upload
             try:
                 import polars as _pl
+
                 from pipelines.storage.schemas import VesselMetaSchema
+
                 VesselMetaSchema.validate(_pl.from_arrow(vm_table))
             except Exception as exc:
                 print(f"  [skip] vessel_meta validation failed: {exc}", file=sys.stderr)
@@ -1381,7 +1300,7 @@ def cmd_push_ais_parquet(args: argparse.Namespace) -> int:
                 print(f"  [error] vessel_meta: {exc}", file=sys.stderr)
         else:
             if vm_table is not None:
-                print(f"  vessel_meta: empty — skipping")
+                print("  vessel_meta: empty — skipping")
 
         con.close()
     print(f"Done. {total_uploaded} file(s) uploaded to {bucket}")
@@ -1395,9 +1314,10 @@ def cmd_pull_ais_parquet(args: argparse.Namespace) -> int:
     present locally by size check.
     Layout: <data-dir>/ais/region=<region>/date=YYYY-MM-DD/positions.parquet
     """
+    from datetime import date, timedelta
+
     import pyarrow.fs as pafs
     import pyarrow.parquet as pq
-    from datetime import date, timedelta
 
     data_dir = Path(args.data_dir)
     bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
@@ -1445,7 +1365,9 @@ def cmd_pull_ais_parquet(args: argparse.Namespace) -> int:
     if regions_to_pull is None:
         # infer from what exists on R2
         try:
-            vm_infos = fs.get_file_info(pafs.FileSelector(f"{bucket}/vessel_meta/", recursive=False))
+            vm_infos = fs.get_file_info(
+                pafs.FileSelector(f"{bucket}/vessel_meta/", recursive=False)
+            )
             regions_to_pull = [
                 Path(i.path).stem.removeprefix("region=")
                 for i in vm_infos
@@ -1453,7 +1375,7 @@ def cmd_pull_ais_parquet(args: argparse.Namespace) -> int:
             ]
         except Exception:
             regions_to_pull = []
-    for region in (regions_to_pull or []):
+    for region in regions_to_pull or []:
         r2_key = f"{bucket}/vessel_meta/region={region}.parquet"
         local_vm = data_dir / "vessel_meta" / f"region={region}.parquet"
         try:
@@ -1541,11 +1463,11 @@ _ARKTRACE_PUBLIC_BASE_URL = "https://arktrace-public.edgesentry.io"
 _ARKTRACE_TABLES: list[tuple[str, str, str]] = [
     # (glob pattern, r2 key template, register_as)
     # region is substituted at runtime for region-scoped files
-    ("*_watchlist.parquet",     "score/{filename}",     "watchlist.parquet"),
-    ("composite_scores.parquet", "score/{filename}",    "composite_scores.parquet"),
-    ("causal_effects.parquet",  "score/{filename}",     "causal_effects.parquet"),
-    ("score_history.parquet",   "score/{filename}",     "score_history.parquet"),
-    ("validation_metrics.parquet", "score/{filename}",  "validation_metrics.parquet"),
+    ("*_watchlist.parquet", "score/{filename}", "watchlist.parquet"),
+    ("composite_scores.parquet", "score/{filename}", "composite_scores.parquet"),
+    ("causal_effects.parquet", "score/{filename}", "causal_effects.parquet"),
+    ("score_history.parquet", "score/{filename}", "score_history.parquet"),
+    ("validation_metrics.parquet", "score/{filename}", "validation_metrics.parquet"),
 ]
 
 # Region prefix → region tag used in the manifest (matches arktrace app config)
@@ -1577,7 +1499,9 @@ def cmd_push_arktrace(args: argparse.Namespace) -> int:
     manifest_files: list[dict] = []
 
     # Collect all score Parquets to upload
-    upload_pairs: list[tuple[Path, str, str, str | None]] = []  # (local, r2_key, register_as, region)
+    upload_pairs: list[
+        tuple[Path, str, str, str | None]
+    ] = []  # (local, r2_key, register_as, region)
 
     # Region-scoped watchlists: singapore_watchlist.parquet → region tag "singapore"
     for wl_path in sorted(data_dir.glob("*_watchlist.parquet")):
@@ -1588,10 +1512,10 @@ def cmd_push_arktrace(args: argparse.Namespace) -> int:
 
     # Shared (non-region) score files
     for name, register_as in [
-        ("composite_scores.parquet",    "composite_scores.parquet"),
-        ("causal_effects.parquet",      "causal_effects.parquet"),
-        ("score_history.parquet",       "score_history.parquet"),
-        ("validation_metrics.parquet",  "validation_metrics.parquet"),
+        ("composite_scores.parquet", "composite_scores.parquet"),
+        ("causal_effects.parquet", "causal_effects.parquet"),
+        ("score_history.parquet", "score_history.parquet"),
+        ("validation_metrics.parquet", "validation_metrics.parquet"),
     ]:
         p = data_dir / name
         if p.exists():
@@ -1680,7 +1604,9 @@ def main() -> int:
         help="Local staging directory for Parquet partitions before upload (default: ~/.indago/data/staging/ais)",
     )
     push_ais_p.add_argument(
-        "--regions", default=None, metavar="REGIONS",
+        "--regions",
+        default=None,
+        metavar="REGIONS",
         help=f"Comma-separated region names (default: all). Known: {', '.join(_REGION_PREFIX)}",
     )
 
@@ -1695,12 +1621,19 @@ def main() -> int:
         help="Local directory to download partitions into (default: ~/.indago/data/downloads)",
     )
     pull_ais_p.add_argument("--regions", default=None, metavar="REGIONS")
-    pull_ais_p.add_argument("--days", type=int, default=60, metavar="N",
-                             help="Download only partitions from the last N days (default: 60)")
+    pull_ais_p.add_argument(
+        "--days",
+        type=int,
+        default=60,
+        metavar="N",
+        help="Download only partitions from the last N days (default: 60)",
+    )
 
     gdelt_push_p = sub.add_parser("push-gdelt", help="Upload gdelt.lance as gdelt.lance.zip")
     gdelt_push_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-    gdelt_push_p.add_argument("--force", action="store_true", help="Re-upload even if already in R2")
+    gdelt_push_p.add_argument(
+        "--force", action="store_true", help="Re-upload even if already in R2"
+    )
     gdelt_pull_p = sub.add_parser("pull-gdelt", help="Download gdelt.lance.zip and extract")
     gdelt_pull_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
@@ -1710,38 +1643,37 @@ def main() -> int:
     pull_sd_p = sub.add_parser("pull-sanctions-db", help="Download public_eval.duckdb from R2")
     pull_sd_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
-    push_wl_p = sub.add_parser("push-watchlists",
-                                help="Upload *_watchlist.parquet files as watchlists.zip")
+    push_wl_p = sub.add_parser(
+        "push-watchlists", help="Upload *_watchlist.parquet files as watchlists.zip"
+    )
     push_wl_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
     push_wl_p.add_argument("--force", action="store_true")
-    pull_wl_p = sub.add_parser("pull-watchlists",
-                                help="Download watchlists.zip and extract")
+    pull_wl_p = sub.add_parser("pull-watchlists", help="Download watchlists.zip and extract")
     pull_wl_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
     push_demo_p = sub.add_parser("push-demo", help="Upload demo bundle to R2")
     push_demo_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
     push_demo_p.add_argument("--force", action="store_true")
-    pull_demo_p = sub.add_parser("pull-demo",
-                                  help="Download demo bundle from R2 (no credentials needed)")
+    pull_demo_p = sub.add_parser(
+        "pull-demo", help="Download demo bundle from R2 (no credentials needed)"
+    )
     pull_demo_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
-    push_dl_p = sub.add_parser("push-ducklake-public",
-                                help="Upload DuckLake catalog + Parquet to maridb-public/")
+    push_dl_p = sub.add_parser(
+        "push-ducklake-public", help="Upload DuckLake catalog + Parquet to maridb-public/"
+    )
     push_dl_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
-    push_gebco_p = sub.add_parser("push-gebco-masks",
-                                   help="Upload GEBCO depth-mask Parquets to maridb-public/")
+    push_gebco_p = sub.add_parser(
+        "push-gebco-masks", help="Upload GEBCO depth-mask Parquets to maridb-public/gebco-masks/"
+    )
     push_gebco_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-    pull_gebco_p = sub.add_parser("pull-gebco-masks",
-                                   help="Download GEBCO depth-mask Parquets from maridb-public/")
-    pull_gebco_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
-    push_gfw_p = sub.add_parser("push-gfw-eo",
-                                 help="Upload GFW EO detection Parquets to maridb-public/")
-    push_gfw_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
-    pull_gfw_p = sub.add_parser("pull-gfw-eo",
-                                 help="Download GFW EO detection Parquets from maridb-public/")
-    pull_gfw_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
+    pull_gebco_p = sub.add_parser(
+        "pull-gebco-masks",
+        help="Download GEBCO depth-mask Parquets from maridb-public/gebco-masks/",
+    )
+    pull_gebco_p.add_argument("--data-dir", default=_DEFAULT_DATA_DIR, metavar="DIR")
 
     push_arktrace_p = sub.add_parser(
         "push-arktrace",
@@ -1753,8 +1685,10 @@ def main() -> int:
 
     args = parser.parse_args()
     read_only = args.command in (
-        "pull", "pull-gdelt", "pull-sanctions-db", "pull-watchlists",
-        "pull-demo", "pull-gebco-masks", "pull-gfw-eo", "pull-ais-parquet", "list",
+        "pull",
+        "pull-gdelt",
+        "pull-sanctions-db",
+        "pull-watchlists",
     )
     if not _check_env(require_credentials=not read_only):
         return 1
@@ -1775,8 +1709,6 @@ def main() -> int:
         "push-ducklake-public": cmd_push_ducklake_public,
         "push-gebco-masks": cmd_push_gebco_masks,
         "pull-gebco-masks": cmd_pull_gebco_masks,
-        "push-gfw-eo": cmd_push_gfw_eo,
-        "pull-gfw-eo": cmd_pull_gfw_eo,
         "push-arktrace": cmd_push_arktrace,
         "list": cmd_list,
     }
