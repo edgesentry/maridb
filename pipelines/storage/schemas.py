@@ -20,13 +20,9 @@ class WatchlistSchema(pa.DataFrameModel):
     """Gate 1 + Gate 2 schema for region watchlist Parquet files."""
 
     mmsi: Series[str] = pa.Field(nullable=False, description="Maritime Mobile Service Identity")
-    composite_score: Series[float] = pa.Field(
-        ge=0.0, le=1.0, nullable=False,
-        description="Alias for confidence; used by Gate 2 validation",
-    )
     confidence: Series[float] = pa.Field(
         ge=0.0, le=1.0, nullable=False,
-        description="Primary composite confidence score",
+        description="Composite confidence score (renamed from composite_score)",
     )
 
     class Config:

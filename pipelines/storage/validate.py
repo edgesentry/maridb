@@ -31,9 +31,9 @@ SPECS: dict[str, ValidationSpec] = {
         no_nulls_in=["mmsi"],
     ),
     "watchlist": ValidationSpec(
-        required_columns=["mmsi", "composite_score"],
+        required_columns=["mmsi", "confidence"],
         min_rows=1,
-        no_nulls_in=["mmsi", "composite_score"],
+        no_nulls_in=["mmsi", "confidence"],
     ),
     "ais_positions": ValidationSpec(
         required_columns=["mmsi", "timestamp", "lat", "lon"],
