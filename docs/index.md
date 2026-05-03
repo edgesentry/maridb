@@ -1,4 +1,4 @@
-# maridb
+# indago
 
 **Maritime data layer — vessel, voyage, cargo, and AIS ingestion and transformation pipelines.**
 
@@ -29,4 +29,4 @@ All buckets: unauthenticated public read.
 
 ## Source
 
-- GitHub: [github.com/edgesentry/maridb](https://github.com/edgesentry/maridb)
+- GitHub: [github.com/edgesentry/indago](https://github.com/edgesentry/indago)

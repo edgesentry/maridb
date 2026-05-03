@@ -34,7 +34,7 @@ class RegionConfig:
 
 
 # MARIDB_DATA_DIR is the "processed" data dir (e.g. data/processed in CI,
-# ~/.maridb/data/processed locally). _DB_DIR is the DuckDB working dir under it.
+# ~/.indago/data/processed locally). _DB_DIR is the DuckDB working dir under it.
 # _DOWNLOADS_DIR goes up one level to find downloads/ alongside processed/.
 _MARIDB_DATA = Path(
     os.getenv("MARIDB_DATA_DIR") or os.getenv("DATA_DIR")

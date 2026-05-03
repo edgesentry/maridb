@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "maridb"
+name = "indago"
 version = "0.1.0"
 description = "Maritime data layer — vessel, voyage, cargo, and AIS ingestion and transformation pipelines"
 requires-python = ">=3.12"

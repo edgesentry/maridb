@@ -1,8 +1,8 @@
 site_name: maridb
 site_description: Maritime data layer — vessel, voyage, cargo, and AIS ingestion and transformation pipelines.
 site_url: https://edgesentry.github.io/maridb/
-repo_url: https://github.com/edgesentry/maridb
-repo_name: edgesentry/maridb
+repo_url: https://github.com/edgesentry/indago
+repo_name: edgesentry/indago
 edit_uri: edit/main/docs/
 
 docs_dir: docs

@@ -24,7 +24,7 @@ def _default_db_path() -> str:
     Resolution order:
     1. ``DB_PATH`` env var (explicit override — used in dev and CI)
     2. ``MARIDB_DATA_DIR`` + ``MARIDB_REGION`` (user config)
-    3. ``~/.maridb/data/<region>.duckdb`` (standard user-level location)
+    3. ``~/.indago/data/<region>.duckdb`` (standard user-level location)
     """
     if explicit := os.getenv("DB_PATH"):
         return explicit

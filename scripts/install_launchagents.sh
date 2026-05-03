@@ -15,9 +15,9 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 AGENTS_DIR="$REPO_DIR/config/launchagents"
 
 # ---------------------------------------------------------------------------
-# Secrets resolution — never hardcoded; must come from environment or ~/.maridb/env
+# Secrets resolution — never hardcoded; must come from environment or ~/.indago/env
 # ---------------------------------------------------------------------------
-ENV_FILE="$HOME/.maridb/env"
+ENV_FILE="$HOME/.indago/env"
 if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
   source "$ENV_FILE"
@@ -28,7 +28,7 @@ AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}"
 AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-}"
 
 if [[ -z "$AISSTREAM_API_KEY" ]]; then
-  echo "Error: AISSTREAM_API_KEY is not set. Add it to ~/.maridb/env or export it." >&2
+  echo "Error: AISSTREAM_API_KEY is not set. Add it to ~/.indago/env or export it." >&2
   exit 1
 fi
 
@@ -62,8 +62,8 @@ fi
 # ---------------------------------------------------------------------------
 process_region() {
   local region="$1"
-  local template="$AGENTS_DIR/io.maridb.aisstream.${region}.plist"
-  local local_plist="$AGENTS_DIR/io.maridb.aisstream.${region}.local.plist"
+  local template="$AGENTS_DIR/io.indago.aisstream.${region}.plist"
+  local local_plist="$AGENTS_DIR/io.indago.aisstream.${region}.local.plist"
 
   if [[ ! -f "$template" ]]; then
     echo "  [skip] no template for region: $region"
@@ -71,7 +71,7 @@ process_region() {
   fi
 
   if [[ $UNLOAD -eq 1 ]]; then
-    launchctl unload "$local_plist" 2>/dev/null && echo "  unloaded: io.maridb.aisstream.$region" || echo "  not loaded: $region"
+    launchctl unload "$local_plist" 2>/dev/null && echo "  unloaded: io.indago.aisstream.$region" || echo "  not loaded: $region"
     return
   fi
 
@@ -94,17 +94,17 @@ process_region() {
   mkdir -p "$HOME/.maridb"
   launchctl unload "$local_plist" 2>/dev/null || true
   launchctl load "$local_plist"
-  echo "  loaded: io.maridb.aisstream.$region"
+  echo "  loaded: io.indago.aisstream.$region"
 }
 
 process_r2sync() {
-  local template="$AGENTS_DIR/io.maridb.r2sync.plist"
-  local local_plist="$AGENTS_DIR/io.maridb.r2sync.local.plist"
+  local template="$AGENTS_DIR/io.indago.r2sync.plist"
+  local local_plist="$AGENTS_DIR/io.indago.r2sync.local.plist"
 
   if [[ ! -f "$template" ]]; then return; fi
 
   if [[ $UNLOAD -eq 1 ]]; then
-    launchctl unload "$local_plist" 2>/dev/null && echo "  unloaded: io.maridb.r2sync" || true
+    launchctl unload "$local_plist" 2>/dev/null && echo "  unloaded: io.indago.r2sync" || true
     return
   fi
 
@@ -121,7 +121,7 @@ process_r2sync() {
 
   launchctl unload "$local_plist" 2>/dev/null || true
   launchctl load "$local_plist"
-  echo "  loaded: io.maridb.r2sync"
+  echo "  loaded: io.indago.r2sync"
 }
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-# maridb
+# indago
 
 **Maritime data layer — vessel, voyage, cargo, and AIS ingestion and transformation pipelines.**
 
@@ -39,7 +39,7 @@ maridb/
 
 ## Related issues
 
-- [#1 — Implement data pipelines](https://github.com/edgesentry/maridb/issues/1)
-- [#2 — R2 bucket architecture](https://github.com/edgesentry/maridb/issues/2)
+- [#1 — Implement data pipelines](https://github.com/edgesentry/indago/issues/1)
+- [#2 — R2 bucket architecture](https://github.com/edgesentry/indago/issues/2)
 - [arktrace#517 — Decouple arktrace from data pipelines](https://github.com/edgesentry/arktrace/issues/517)
 - [documaris#8 — documaris-public R2 bucket schema](https://github.com/edgesentry/documaris/issues/8)

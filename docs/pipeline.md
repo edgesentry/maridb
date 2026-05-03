@@ -1,4 +1,4 @@
-# maridb — Pipeline and Data Flow
+# indago — Pipeline and Data Flow
 
 **Updated:** 2026-04-25
 
@@ -54,10 +54,10 @@ LaunchAgent: aisstream
 
 ## Local directory layout
 
-All local data lives under `~/.maridb/data/` (override with `MARIDB_DATA_DIR` env var).
+All local data lives under `~/.indago/data/` (override with `MARIDB_DATA_DIR` env var).
 
 ```
-~/.maridb/
+~/.indago/
 ├── data/
 │   ├── raw/
 │   │   └── ais/
@@ -89,36 +89,36 @@ All local data lives under `~/.maridb/data/` (override with `MARIDB_DATA_DIR` en
 
 ## Stage 1 — AIS stream collection (local, always running)
 
-**Who writes:** `pipelines/ingest/ais_stream.py` via `io.maridb.aisstream.<region>` LaunchAgent
+**Who writes:** `pipelines/ingest/ais_stream.py` via `io.indago.aisstream.<region>` LaunchAgent
 
-**Writes to:** `~/.maridb/data/raw/ais/{region}.duckdb`
+**Writes to:** `~/.indago/data/raw/ais/{region}.duckdb`
 
 **Active regions:** whichever have a `*.local.plist` installed under `~/Library/LaunchAgents/`
 
 ```bash
 launchctl list | grep io.maridb          # check status
-tail -f ~/.maridb/singapore.log          # tail live AIS log
+tail -f ~/.indago/singapore.log          # tail live AIS log
 ```
 
 ---
 
 ## Stage 2 — R2 upload (local → maridb-public, hourly)
 
-**Who writes:** `scripts/sync_r2.py push-ais-parquet` via `io.maridb.r2sync` LaunchAgent
+**Who writes:** `scripts/sync_r2.py push-ais-parquet` via `io.indago.r2sync` LaunchAgent
 
-**Reads from:** `~/.maridb/data/raw/ais/{region}.duckdb`  
-**Stages to:** `~/.maridb/data/staging/ais/region={stem}/date=YYYY-MM-DD/positions.parquet`  
+**Reads from:** `~/.indago/data/raw/ais/{region}.duckdb`  
+**Stages to:** `~/.indago/data/staging/ais/region={stem}/date=YYYY-MM-DD/positions.parquet`  
 **Uploads to:** `maridb-public/ais/region={stem}/date=YYYY-MM-DD/positions.parquet`
 
 The region name in R2 is the **file stem** (e.g. `japansea`, not `japan`).
 
 **Manual run:**
 ```bash
-source ~/.maridb/env
+source ~/.indago/env
 uv run python scripts/sync_r2.py push-ais-parquet \
   --regions singapore,japansea,blacksea \
-  --data-dir ~/.maridb/data/raw/ais \
-  --staging-dir ~/.maridb/data/staging/ais
+  --data-dir ~/.indago/data/raw/ais \
+  --staging-dir ~/.indago/data/staging/ais
 ```
 
 ---
@@ -133,7 +133,7 @@ uv run python scripts/sync_r2.py push-ais-parquet \
 
 **Manual trigger:**
 ```bash
-gh workflow run gdelt-ingest.yml --repo edgesentry/maridb
+gh workflow run gdelt-ingest.yml --repo edgesentry/indago
 ```
 
 ---
@@ -216,31 +216,31 @@ Previous version in app bucket remains live on Gate 2 failure.
 launchctl list | grep io.maridb
 
 # Tail live logs
-tail -f ~/.maridb/singapore.log
-tail -f ~/.maridb/r2sync.log
+tail -f ~/.indago/singapore.log
+tail -f ~/.indago/r2sync.log
 
 # Manual: upload today's AIS to R2
-source ~/.maridb/env
+source ~/.indago/env
 uv run python scripts/sync_r2.py push-ais-parquet \
   --regions singapore,japansea,blacksea \
-  --data-dir ~/.maridb/data/raw/ais \
-  --staging-dir ~/.maridb/data/staging/ais
+  --data-dir ~/.indago/data/raw/ais \
+  --staging-dir ~/.indago/data/staging/ais
 
 # Manual: download 60 days of AIS from R2
-source ~/.maridb/env
+source ~/.indago/env
 uv run python scripts/sync_r2.py pull-ais-parquet \
   --regions singapore --days 60
 
 # Manual: run backtest locally
-source ~/.maridb/env
+source ~/.indago/env
 uv run python scripts/sync_r2.py pull-ais-parquet --regions singapore --days 60
 uv run python scripts/run_public_backtest_batch.py \
   --regions singapore --stream-duration 0 --seed-dummy --min-known-cases 5
 
 # Trigger CI manually
-gh workflow run data-publish.yml --repo edgesentry/maridb
-gh workflow run gdelt-ingest.yml --repo edgesentry/maridb
+gh workflow run data-publish.yml --repo edgesentry/indago
+gh workflow run gdelt-ingest.yml --repo edgesentry/indago
 
 # Check recent CI runs
-gh run list --repo edgesentry/maridb --limit 5
+gh run list --repo edgesentry/indago --limit 5
 ```

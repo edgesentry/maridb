@@ -13,14 +13,14 @@ Data directory and region resolution order
 ------------------------------------------
 1. ``DB_PATH`` env var (explicit full path — dev / CI; overrides everything)
 2. ``MARIDB_DATA_DIR`` / ``MARIDB_REGION`` env vars
-3. ``~/.maridb/data/<region>.duckdb`` (standard user-level install location)
+3. ``~/.indago/data/<region>.duckdb`` (standard user-level install location)
 
 Environment variables
 ---------------------
 DB_PATH                 Full path to the region DuckDB (overrides all below).
 MARIDB_REGION         Region to use: singapore (default), japan, middleeast,
                         europe, gulf.
-MARIDB_DATA_DIR       Override the data directory (default: ~/.maridb/data/).
+MARIDB_DATA_DIR       Override the data directory (default: ~/.indago/data/).
 S3_BUCKET               R2 bucket name. Default: maridb-public
 S3_ENDPOINT             R2 endpoint URL.
 AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
