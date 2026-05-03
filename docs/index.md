@@ -18,6 +18,10 @@ indago is the shared data foundation for the edgesentry product stack. It collec
 ## Quick links
 
 - [R2 Buckets](r2-buckets.md) — bucket architecture, partition layout, data flow
+- [Pipeline Operations](pipeline-operations.md) — how to run, monitor, and recover the pipeline
+- [Feature Engineering](feature-engineering.md) — all 27 features, shadow fleet signal rationale
+- [Scoring Model](scoring-model.md) — HDBSCAN baseline, Isolation Forest, composite score formula
+- [Regional Playbooks](regional-playbooks.md) — per-region operational notes
 
 ## Product stack
 
