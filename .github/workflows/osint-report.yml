@@ -1,8 +1,7 @@
 name: OSINT Watchlist Report
 
 # Generates a structured OSINT report from the latest candidate_watchlist.parquet
-# and opens a GitHub Issue so the team stays current without manual effort.
-# Case B in docs/osint-workflow-design.md.
+# and emails it to NOTIFY_EMAIL. Case B in docs/osint-workflow-design.md.
 #
 # Schedule: Monday 07:00 UTC — after sanctions-refresh (00:30) and
 #           data-publish (01:00) have both completed and pushed fresh watchlists.
@@ -20,12 +19,11 @@ concurrency:
 
 jobs:
   report:
-    name: Generate OSINT report & open issue
+    name: Generate OSINT report & email
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
-      issues: write
     env:
       MARIDB_DATA_DIR: data/processed
 
@@ -50,26 +48,21 @@ jobs:
           uv run python scripts/sync_r2.py pull-watchlists \
             || { echo "::error::Failed to pull watchlists from R2"; exit 1; }
 
-      - name: Generate OSINT report
-        id: report
+      - name: Generate report & send email
+        env:
+          NOTIFY_EMAIL: ${{ vars.NOTIFY_EMAIL }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          SMTP_USER: ${{ vars.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           uv run python scripts/generate_osint_report.py \
             --watchlist data/processed/candidate_watchlist.parquet \
             --top 50 \
-            --out /tmp/osint_report.md
-          echo "report_path=/tmp/osint_report.md" >> "$GITHUB_OUTPUT"
-
-      - name: Open GitHub Issue
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          title="[OSINT Check] Watchlist — $(date -u +%Y-%m-%d)"
-          gh issue create \
-            --title "$title" \
-            --body-file /tmp/osint_report.md \
-            --label "osint" \
-            --repo "$GITHUB_REPOSITORY" \
-            || echo "::warning::Could not create issue (label may not exist — create 'osint' label to enable)"
+            --out /tmp/osint_report.md \
+            --email
 
       - name: Upload report artifact
         if: always()

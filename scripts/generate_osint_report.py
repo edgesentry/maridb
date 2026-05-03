@@ -11,26 +11,36 @@ What this script does
 - Flags vessels where sanctions_distance == 0 (directly sanctioned)
 - Detects ITU-unallocated MMSIs (stateless vessels)
 - Generates MarineTraffic / VesselFinder / OFAC search URLs per vessel
-- Writes a structured Markdown report
+- Writes a structured Markdown report and optionally emails it
 
 Usage
 -----
     uv run python scripts/generate_osint_report.py
     uv run python scripts/generate_osint_report.py --top 50 --out report.md
-    uv run python scripts/generate_osint_report.py --watchlist data/processed/candidate_watchlist.parquet
+    uv run python scripts/generate_osint_report.py --email
 
 Environment variables
 ---------------------
 MARIDB_DATA_DIR  Directory containing candidate_watchlist.parquet
                  (default: ~/.maridb/data or data/processed if that exists)
+NOTIFY_EMAIL     Recipient address (required for --email)
+SMTP_HOST        SMTP server hostname  (default: smtp.gmail.com)
+SMTP_PORT        SMTP server port      (default: 587)
+SMTP_USER        Sender address / login
+SMTP_PASSWORD    SMTP password / app-password
+GITHUB_RUN_ID    Injected automatically by GitHub Actions
+GITHUB_REPOSITORY Injected automatically by GitHub Actions
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import smtplib
 import sys
 from datetime import date
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from pathlib import Path
 
 import polars as pl
@@ -210,11 +220,60 @@ def generate_report(df: pl.DataFrame, top_n: int) -> str:
     return "\n".join(header + lines) + "\n"
 
 
+def _send_email(subject: str, markdown_body: str) -> bool:
+    """Send the report as a plain-text email. Returns True on success."""
+    recipient = os.getenv("NOTIFY_EMAIL")
+    if not recipient:
+        print("NOTIFY_EMAIL not set — skipping email.", file=sys.stderr)
+        return False
+
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_password = os.getenv("SMTP_PASSWORD", "")
+
+    if not smtp_user or not smtp_password:
+        print("SMTP_USER / SMTP_PASSWORD not set — skipping email.", file=sys.stderr)
+        return False
+
+    run_id = os.getenv("GITHUB_RUN_ID", "")
+    repo = os.getenv("GITHUB_REPOSITORY", "edgesentry/indago")
+    run_url = (
+        f"https://github.com/{repo}/actions/runs/{run_id}"
+        if run_id
+        else f"https://github.com/{repo}/actions"
+    )
+
+    html_body = (
+        "<html><body><pre style='font-family:monospace;font-size:13px'>"
+        + markdown_body.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        + "</pre>"
+        + f"<p><a href='{run_url}'>View CI run →</a></p>"
+        + "</body></html>"
+    )
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = smtp_user
+    msg["To"] = recipient
+    msg.attach(MIMEText(markdown_body, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
+
+    print(f"Sending email to {recipient} via {smtp_host}:{smtp_port} …")
+    with smtplib.SMTP(smtp_host, smtp_port) as server:
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.sendmail(smtp_user, recipient, msg.as_string())
+    print(f"Email sent: {subject}")
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate OSINT watchlist report")
     parser.add_argument("--watchlist", help="Path to candidate_watchlist.parquet")
     parser.add_argument("--top", type=int, default=50, help="Top-N vessels (default: 50)")
     parser.add_argument("--out", help="Output file path (default: stdout)")
+    parser.add_argument("--email", action="store_true", help="Send report by email (reads SMTP env vars)")
     args = parser.parse_args()
 
     watchlist_path = _resolve_watchlist_path(args.watchlist)
@@ -244,6 +303,10 @@ def main() -> int:
         print(f"Report written to {args.out}")
     else:
         sys.stdout.write(report)
+
+    if args.email:
+        today = date.today().isoformat()
+        _send_email(f"[OSINT Check] Watchlist — {today}", report)
 
     return 0
 
