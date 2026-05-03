@@ -49,9 +49,11 @@ install_agent() {
   local name="$1"
   local template="$AGENTS_DIR/${name}.plist"
   local local_plist="$AGENTS_DIR/${name}.local.plist"
+  local launch_agents_plist="$HOME/Library/LaunchAgents/${name}.plist"
 
   if [[ $UNLOAD -eq 1 ]]; then
-    launchctl unload "$local_plist" 2>/dev/null && echo "  unloaded: $name" || echo "  not loaded: $name"
+    launchctl unload "$launch_agents_plist" 2>/dev/null && echo "  unloaded: $name" || echo "  not loaded: $name"
+    rm -f "$launch_agents_plist"
     return
   fi
 
@@ -67,8 +69,9 @@ install_agent() {
     -e "s|REPLACE_WITH_HOME|$HOME|g" \
     "$template" > "$local_plist"
 
-  launchctl unload "$local_plist" 2>/dev/null || true
-  launchctl load "$local_plist"
+  cp "$local_plist" "$launch_agents_plist"
+  launchctl unload "$launch_agents_plist" 2>/dev/null || true
+  launchctl load "$launch_agents_plist"
   echo "  loaded: $name"
 }
 
