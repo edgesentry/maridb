@@ -158,4 +158,4 @@ Top-7 vessels with `sanctions_distance=0` cross-referenced against OSINT:
 
 ## Recommended frequency
 
-Run this playbook **weekly** to maintain a live OSINT-matched watchlist for the pitch and for Cap Vista PoC demonstration.
+Run this playbook **weekly** to maintain a live OSINT-matched watchlist.

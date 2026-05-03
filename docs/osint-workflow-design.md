@@ -35,22 +35,21 @@ Both cases share the same **deterministic core scripts** for data preparation.
 
 ```
 Step 1 — Data preparation (deterministic, ~30 sec)
-  uv run python scripts/osint_watchlist_check.py --top 50 --output /tmp/watchlist.json
+  # Pull watchlist from R2 and query sanctions DB — see indago#86 for
+  # the planned replacement of the removed osint_watchlist_check.py script.
+  # Interim: query data/processed/public_eval.duckdb + candidate_watchlist.parquet
+  # directly (see shadow-fleet-osint-playbook.md Step 1–2 for queries).
 
 Step 2 — LLM investigation session (interactive, 10-20 min)
-  # In Claude Code or local LLM session:
-  # "Read /tmp/watchlist.json. For sanctions_distance=0 vessels,
-  #  search MarineTraffic and current news. Tell me which are
-  #  most relevant to the Iran/Russia shadow fleet today."
+  # In arktrace app: open the 5-step investigation panel on any watchlist candidate.
+  # For news-triggered / sanctions-only vessels not in the watchlist:
+  # run the sanctions DB gap check manually (see coverage gap pattern section below).
 
 Step 3 — Human review and redirect
-  # "Focus on PIONEER 92. What is its connection to Singapore EOPL?"
-  # "Draft a 3-sentence pitch slide about this vessel."
-  # "Is there a newer OFAC designation this week that affects any of these?"
+  # Focus on a specific vessel using the OSINT links generated in Step 2 of the panel.
 
 Step 4 — Approve and record
-  # Human confirms findings
-  # LLM posts approved summary to GitHub Issue (audit trail)
+  # Analyst approves brief → "Copy as Markdown" → paste into GitHub Issue (audit trail)
 ```
 
 ### What the LLM can do that scripts cannot
@@ -126,19 +125,14 @@ Human clicks links to verify on MarineTraffic / Tanker Trackers.
 
 ## Shared deterministic core
 
-Both cases use the same script for data preparation:
+Both cases require the same structured data:
 
-```bash
-# scripts/osint_watchlist_check.py
-# Input:  maridb-public/score/candidate_watchlist.parquet (R2)
-# Output: structured JSON with:
-#   - top-N vessels sorted by confidence
-#   - sanctions_distance=0 flag
-#   - stateless MMSI detection (ITU MID lookup)
-#   - pre-built MarineTraffic / VesselFinder / OFAC search URLs
-```
+- Top-N vessels sorted by confidence
+- `sanctions_distance=0` flag
+- Stateless MMSI detection (ITU MID lookup)
+- Pre-built MarineTraffic / VesselFinder / OFAC search URLs
 
-The script is deterministic and fast. The LLM (Case A) or GitHub Actions (Case B) consumes its output.
+`scripts/osint_watchlist_check.py` was removed because its output was designed to be fed into a Claude Code session (Case A). The replacement approach — surfacing this data natively in arktrace's investigation panel and as a scheduled indago pipeline output — is tracked in [indago#86](https://github.com/edgesentry/indago/issues/86).
 
 ---
 
@@ -148,9 +142,9 @@ The script is deterministic and fast. The LLM (Case A) or GitHub Actions (Case B
 maridb-public R2
       │
       ▼
-osint_watchlist_check.py  ←── deterministic, shared
+candidate_watchlist.parquet + sanctions_entities  ←── deterministic, shared
       │
-      ├──► Case A: LLM session ──► human review ──► GH Issue (narrative)
+      ├──► Case A: arktrace investigation panel ──► human review ──► GH Issue
       │
       └──► Case B: scheduled workflow ──► structured report (automatic)
 ```
@@ -159,19 +153,102 @@ Run both. Case B catches things while you sleep. Case A goes deep before you pre
 
 ---
 
-## CAP Vista pitch relevance
+## Coverage gap pattern — vessel in sanctions DB but absent from watchlist
 
-> "An analyst preparing for an operational briefing triggers a 10-minute investigation session. The system pulls the current watchlist, the LLM cross-references live OSINT and drafts a briefing note. The LLM runs on llama.cpp — on the same Raspberry Pi 5 as the AIS receiver. No cloud dependency, no latency, no data leaving the device. That is the edge deployment story."
+indago's scoring pipeline requires AIS positional data to compute behavioural
+features. If a vessel is not broadcasting AIS (or is broadcasting under a different
+MMSI after a flag change), it accumulates no behavioural score and does not appear
+in `candidate_watchlist.parquet` — even if it is directly sanctioned.
 
-This directly addresses Cap Vista's requirements for:
-- Low-compute edge deployment
-- Analyst decision support
-- Operational continuity under network-denied conditions
+The `sanctions_entities` table is sourced from OpenSanctions (OFAC, EU, UN, MAS)
+and is independent of AIS coverage. A vessel can therefore be present in
+`sanctions_entities` while completely absent from the watchlist. This gap is not a
+bug: it means the vessel has evaded our AIS observation window.
+
+**How to detect the gap:**
+
+```python
+import duckdb, polars as pl
+from pathlib import Path
+
+db = duckdb.connect("data/processed/public_eval.duckdb")
+wl = pl.read_parquet(Path.home() / ".maridb/data/candidate_watchlist.parquet")
+
+# Query sanctions DB by vessel name or known MMSI/IMO
+hits = db.execute(
+    "SELECT name, mmsi, imo, flag, lists FROM sanctions_entities "
+    "WHERE UPPER(name) LIKE '%VOYAGER%'"
+).df()
+print(hits)
+
+# Cross-reference: is the MMSI also in the watchlist?
+for _, row in hits.iterrows():
+    in_wl = wl.filter(pl.col("mmsi") == row["mmsi"]).height
+    print(f"{row['name']}  MMSI={row['mmsi']}  in_watchlist={in_wl > 0}")
+```
+
+**When you find a gap, trigger Case A.** The sanctions DB entry provides the
+anchor (MMSI, IMO, flag at time of designation); the LLM investigates the current
+AIS state, flag changes, and news coverage to reconstruct the vessel's recent
+activity.
+
+### Worked example — VOYAGER (May 2026)
+
+Starting point: Al Jazeera investigative report 2026-04-30,
+[*Tracking the shadow fleet: How Iran evaded the US naval blockade in Hormuz*](https://www.aljazeera.com/economy/2026/4/30/tracking-the-shadow-fleet-how-iran-evaded-the-us-naval-blockade-in-hormuz).
+The article named a vessel "Pola" in the Hormuz/Iran shadow fleet context. A name
+search in `sanctions_entities` found no direct match — but returned 20 POLA-series
+Sovcomflot tankers (OFAC SDN, EO 14024, all linked to Sakhalin-2 LNG exports from
+Russia). Following the Sakhalin-2 thread, a Sankei Shimbun report (2026-05-01)
+identified VOYAGER — an Oman-flagged crude tanker carrying Sakhalin-2 Russian crude
+inbound to Kikuma port, Ehime (Taiyo Oil refinery) after transiting the Osumi
+Strait. The vessel is OFAC-sanctioned.
+
+Running the gap check:
+
+```
+sanctions_entities result:
+  name=Voyager  MMSI=314906000  IMO=9843560  flag=km (Comoros at designation)
+  lists: us_ofac_sdn, eu_journal_sanctions, ca_dfatd_sema_sanctions, gb_fcdo_sanctions, ch_seco_sanctions
+
+candidate_watchlist result:
+  MMSI 314906000 → 0 rows   (not in watchlist)
+  IMO  9843560   → 0 rows   (not in watchlist)
+```
+
+**Interpretation:**
+
+| Finding | Implication |
+|---|---|
+| In `sanctions_entities` (`us_ofac_sdn`) | Vessel is OFAC-designated — public fact, confirmed |
+| Flag changed Comoros → Oman | MMSI likely changed after re-registration; old MMSI no longer broadcasting |
+| Not in `candidate_watchlist` | No AIS coverage under the known MMSI → behavioural score cannot be computed |
+| Not in `ais_positions` | Vessel is either AIS-dark or has adopted a new MMSI |
+
+**Why it matters for the pitch:** indago's sanctions layer caught the vessel; the
+AIS behavioural layer could not. This is the exact gap arktrace's causal inference
+fills — connecting ownership network signals to vessels that have gone dark.
+
+**Next step:** Hand off to arktrace Case A investigation. See
+[arktrace investigation test cases](https://edgesentry.github.io/arktrace/investigation-test-cases/)
+for the full analyst workflow applied to this vessel.
+
+---
+
+## Edge deployment note
+
+> "An analyst preparing for an operational briefing triggers a 10-minute investigation session. The system pulls the current watchlist, the LLM cross-references live OSINT and drafts a briefing note. The LLM runs on llama.cpp — on the same Raspberry Pi 5 as the AIS receiver. No cloud dependency, no latency, no data leaving the device."
+
+This workflow is designed for:
+- Low-compute edge deployment (Raspberry Pi 5 / laptop — no GPU required)
+- Analyst decision support in forward-deployed or network-constrained environments
+- Operational continuity when internet connectivity is unreliable or unavailable
 
 ---
 
 ## References
 
 - [Shadow Fleet OSINT Playbook](shadow-fleet-osint-playbook.md) — manual procedure this automates
+- [arktrace investigation test cases](https://edgesentry.github.io/arktrace/investigation-test-cases/) — analyst LLM workflow including news-triggered cases
 - [arktrace#550](https://github.com/edgesentry/arktrace/issues/550) — GitHub Actions implementation
 - [arktrace#551](https://github.com/edgesentry/arktrace/issues/551) — Local LLM implementation

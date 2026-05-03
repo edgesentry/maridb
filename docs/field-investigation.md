@@ -1,6 +1,6 @@
 # Field Investigation — Physical Vessel Measurement, Evidence Capture & Secure Reporting
 
-> **Implementation scope:** This workflow is implemented in [edgesentry-rs](https://github.com/edgesentry/edgesentry-rs) and edgesentry-app — not in this repository. This document is a requirements and design proposal to guide that implementation, and to complete the end-to-end picture for the Cap Vista proposal.
+> **Implementation scope:** This workflow is implemented in [edgesentry-rs](https://github.com/edgesentry/edgesentry-rs) and edgesentry-app — not in this repository. This document is a requirements and design proposal to guide that implementation, and to complete the end-to-end picture.
 
 ---
 

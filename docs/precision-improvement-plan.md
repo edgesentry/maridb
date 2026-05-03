@@ -8,7 +8,7 @@ This document explains the two distinct P@50 thresholds used in arktrace, the cu
 
 | Threshold | What it is | Source |
 |---|---|---|
-| **≥ 0.60** | **Contractual Acceptance Gate** — the minimum P@50 committed to Cap Vista in the Scope of Work. Meeting this threshold satisfies the PoC delivery obligation. | Annex A § 1 Validation & Reporting table |
+| **≥ 0.60** | **Contractual acceptance gate** — the minimum P@50 committed in the Scope of Work. Meeting this threshold satisfies the PoC delivery obligation. | Annex A § 1 Validation & Reporting table |
 | **≥ 0.68** | **Demonstrated Technical Ceiling** — the P@50 achieved during multi-region public-data backtesting (13 confirmed OFAC vessels across 5 regions). This is an internal CI gate and a position of strength, not an additional contractual commitment. | `evaluation-metrics.md`; CI integration test |
 
 These are separate numbers with separate purposes. The 0.68 figure appearing in CI checks and technical docs reflects what the model has already demonstrated on public data — it does not replace or raise the 0.60 contractual gate.
