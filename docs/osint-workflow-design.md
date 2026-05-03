@@ -70,26 +70,28 @@ Step 4 — Approve and record
 
 ---
 
-## Case B — Automated GitHub Actions workflow
+## Case B — Automated scheduled workflow
 
 **Issue:** [arktrace#550](https://github.com/edgesentry/arktrace/issues/550)
+
+**Workflow engine is not prescribed.** The core is a Python script; the scheduler is interchangeable — cron, Airflow, Prefect, GitHub Actions, or whatever the deployment environment provides.
 
 ### When to use
 
 - Weekly routine check — team stays current without manual effort
 - Trigger after a major OFAC/UN sanctions action to see watchlist impact
-- CI gate: "did this week's pipeline run produce any new sanctions hits?"
+- Any environment where a scheduler is available
 
 ### Workflow
 
 ```
-Trigger: schedule (weekly) OR workflow_dispatch (manual)
+Trigger: any scheduler (cron / Airflow / GHA / manual)
 
-Step 1 — Pull top-50 from maridb-public R2
+Step 1 — Pull top-50 from R2 (or local pipeline output)
 Step 2 — Detect stateless / unallocated MMSIs
 Step 3 — Cross-reference OpenSanctions DB (local)
 Step 4 — Generate MarineTraffic / OFAC links for each vessel
-Step 5 — Post GitHub Issue with structured findings table
+Step 5 — Write structured report (file / issue / notification)
 ```
 
 ### Output format
@@ -150,7 +152,7 @@ osint_watchlist_check.py  ←── deterministic, shared
       │
       ├──► Case A: LLM session ──► human review ──► GH Issue (narrative)
       │
-      └──► Case B: GHA workflow ──► GH Issue (structured, automatic)
+      └──► Case B: scheduled workflow ──► structured report (automatic)
 ```
 
 Run both. Case B catches things while you sleep. Case A goes deep before you present.
