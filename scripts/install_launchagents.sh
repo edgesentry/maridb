@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Generate .local.plist files with real secrets and load them as LaunchAgents.
-# The .local.plist files are git-ignored; templates (with REPLACE_WITH_* placeholders)
-# are committed to git.
+# Install or unload the two indago LaunchAgents:
+#   io.indago.aisstream  — AIS stream rotator (max 3 concurrent regions)
+#   io.indago.r2sync     — hourly DuckDB → Parquet → R2 sync
 #
 # Usage:
-#   bash scripts/install_launchagents.sh singapore japansea blacksea
-#   bash scripts/install_launchagents.sh --all
-#   bash scripts/install_launchagents.sh --unload singapore japansea blacksea
+#   bash scripts/install_launchagents.sh           # load both
+#   bash scripts/install_launchagents.sh --unload  # unload both
 
 set -euo pipefail
 
@@ -15,7 +14,7 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 AGENTS_DIR="$REPO_DIR/config/launchagents"
 
 # ---------------------------------------------------------------------------
-# Secrets resolution — never hardcoded; must come from environment or ~/.indago/env
+# Secrets — from environment or ~/.indago/env
 # ---------------------------------------------------------------------------
 ENV_FILE="$HOME/.indago/env"
 if [[ -f "$ENV_FILE" ]]; then
@@ -26,117 +25,70 @@ fi
 AISSTREAM_API_KEY="${AISSTREAM_API_KEY:-}"
 AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}"
 AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-}"
-
-if [[ -z "$AISSTREAM_API_KEY" ]]; then
-  echo "Error: AISSTREAM_API_KEY is not set. Add it to ~/.indago/env or export it." >&2
-  exit 1
-fi
+S3_BUCKET="${S3_BUCKET:-indago-public}"
 
 # ---------------------------------------------------------------------------
 # Parse arguments
 # ---------------------------------------------------------------------------
 UNLOAD=0
-ALL=0
-REGIONS=()
-
 for arg in "$@"; do
   case "$arg" in
     --unload) UNLOAD=1 ;;
-    --all)    ALL=1 ;;
-    *)        REGIONS+=("$arg") ;;
+    *) echo "Unknown argument: $arg"; exit 1 ;;
   esac
 done
 
-if [[ $ALL -eq 1 ]]; then
-  REGIONS=(singapore japansea blacksea europe middleeast persiangulf gulfofguinea gulfofaden gulfofmexico hornofafrica)
-fi
-
-if [[ ${#REGIONS[@]} -eq 0 ]]; then
-  echo "Usage: $0 [--unload] [--all] <region> [<region> ...]"
-  echo "       $0 singapore japansea blacksea"
-  exit 1
-fi
-
 # ---------------------------------------------------------------------------
-# Load / unload helper
+# Helpers
 # ---------------------------------------------------------------------------
-process_region() {
-  local region="$1"
-  local template="$AGENTS_DIR/io.indago.aisstream.${region}.plist"
-  local local_plist="$AGENTS_DIR/io.indago.aisstream.${region}.local.plist"
+UV_BIN="$(command -v uv || echo /opt/homebrew/bin/uv)"
+DATA_DIR="$HOME/.indago"
+LOG_DIR="$HOME/.indago/logs"
 
-  if [[ ! -f "$template" ]]; then
-    echo "  [skip] no template for region: $region"
-    return
-  fi
+install_agent() {
+  local name="$1"
+  local template="$AGENTS_DIR/${name}.plist"
+  local local_plist="$AGENTS_DIR/${name}.local.plist"
 
   if [[ $UNLOAD -eq 1 ]]; then
-    launchctl unload "$local_plist" 2>/dev/null && echo "  unloaded: io.indago.aisstream.$region" || echo "  not loaded: $region"
+    launchctl unload "$local_plist" 2>/dev/null && echo "  unloaded: $name" || echo "  not loaded: $name"
     return
   fi
 
-  # Generate .local.plist with real secrets and resolved paths
-  UV_BIN="$(command -v uv || echo /opt/homebrew/bin/uv)"
-  DATA_DIR="$HOME/.maridb"
-  LOG_DIR="$HOME/.maridb"
-  mkdir -p "$DATA_DIR/data/raw/ais" "$LOG_DIR"
+  mkdir -p "$DATA_DIR/data/raw/ais" "$DATA_DIR/data/staging/ais" "$LOG_DIR"
+
   sed \
     -e "s|REPLACE_WITH_AISSTREAM_API_KEY|$AISSTREAM_API_KEY|g" \
-    -e "s|REPLACE_WITH_AWS_ACCESS_KEY_ID|${AWS_ACCESS_KEY_ID:-}|g" \
-    -e "s|REPLACE_WITH_AWS_SECRET_ACCESS_KEY|${AWS_SECRET_ACCESS_KEY:-}|g" \
-    -e "s|REPLACE_WITH_PROJECT_DIR/data/raw/ais|$DATA_DIR/data/raw/ais|g" \
+    -e "s|REPLACE_WITH_AWS_ACCESS_KEY_ID|${AWS_ACCESS_KEY_ID}|g" \
+    -e "s|REPLACE_WITH_AWS_SECRET_ACCESS_KEY|${AWS_SECRET_ACCESS_KEY}|g" \
+    -e "s|REPLACE_WITH_S3_BUCKET|${S3_BUCKET}|g" \
     -e "s|REPLACE_WITH_PROJECT_DIR|$REPO_DIR|g" \
     -e "s|REPLACE_WITH_UV_BIN|$UV_BIN|g" \
     -e "s|REPLACE_WITH_HOME|$HOME|g" \
-    -e "s|REPLACE_WITH_LOG_DIR|$LOG_DIR|g" \
-    "$template" > "$local_plist"
-
-  mkdir -p "$HOME/.maridb"
-  launchctl unload "$local_plist" 2>/dev/null || true
-  launchctl load "$local_plist"
-  echo "  loaded: io.indago.aisstream.$region"
-}
-
-process_r2sync() {
-  local template="$AGENTS_DIR/io.indago.r2sync.plist"
-  local local_plist="$AGENTS_DIR/io.indago.r2sync.local.plist"
-
-  if [[ ! -f "$template" ]]; then return; fi
-
-  if [[ $UNLOAD -eq 1 ]]; then
-    launchctl unload "$local_plist" 2>/dev/null && echo "  unloaded: io.indago.r2sync" || true
-    return
-  fi
-
-  if [[ -z "$AWS_ACCESS_KEY_ID" ]]; then
-    echo "  [skip] r2sync — AWS_ACCESS_KEY_ID not set"
-    return
-  fi
-
-  sed \
-    -e "s|REPLACE_WITH_AWS_ACCESS_KEY_ID|$AWS_ACCESS_KEY_ID|g" \
-    -e "s|REPLACE_WITH_AWS_SECRET_ACCESS_KEY|$AWS_SECRET_ACCESS_KEY|g" \
-    -e "s|REPLACE_WITH_PROJECT_DIR|$HOME/.maridb|g" \
     "$template" > "$local_plist"
 
   launchctl unload "$local_plist" 2>/dev/null || true
   launchctl load "$local_plist"
-  echo "  loaded: io.indago.r2sync"
+  echo "  loaded: $name"
 }
 
 # ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
-echo "maridb LaunchAgents — $([ $UNLOAD -eq 1 ] && echo unload || echo load)"
+echo "indago LaunchAgents — $([ $UNLOAD -eq 1 ] && echo unload || echo load)"
 echo ""
 
-for region in "${REGIONS[@]}"; do
-  process_region "$region"
-done
+if [[ $UNLOAD -eq 0 ]] && [[ -z "$AISSTREAM_API_KEY" ]]; then
+  echo "Error: AISSTREAM_API_KEY is not set. Add it to ~/.indago/env or export it." >&2
+  exit 1
+fi
 
-# Always handle r2sync when loading
-if [[ $UNLOAD -eq 0 ]]; then
-  process_r2sync
+install_agent "io.indago.aisstream"
+
+if [[ $UNLOAD -eq 0 ]] && [[ -z "$AWS_ACCESS_KEY_ID" ]]; then
+  echo "  [skip] io.indago.r2sync — AWS_ACCESS_KEY_ID not set"
+else
+  install_agent "io.indago.r2sync"
 fi
 
 echo ""
