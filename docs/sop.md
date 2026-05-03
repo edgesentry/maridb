@@ -1,7 +1,7 @@
 # arktrace Analyst Standard Operating Procedure
 
 **Version:** 1.0  
-**Applies to:** Singapore / Malacca Strait PoC deployment (Cap Vista Solicitation 5.0)  
+**Applies to:** Singapore / Malacca Strait PoC deployment  
 **Audience:** Maritime security analysts and patrol officers using the arktrace dashboard
 
 ---
@@ -199,13 +199,13 @@ The signed evidence bundle is the authoritative record for any subsequent legal 
 | Signature verification | Shore station / POCC | Ed25519 + BLAKE3 verified before ingestion | On receipt |
 | Feedback label | Analyst (dashboard) | Outcome recorded as `confirmed_positive` or `confirmed_negative` | Within 24 hours of return |
 
-> **Phase B implementation status:** The patrol vessel software (edgesentry-rs, edgesentry-app) and the Ed25519 / BLAKE3 evidence chain are design-complete; implementation begins after trial contract award. During the Cap Vista PoC, Phase B handoff is simulated: the analyst manually records patrol outcomes in the dashboard feedback panel (§ 5). The `candidate_watchlist.parquet` export and dispatch brief PDF are production-ready.
+> **Phase B implementation status:** The patrol vessel software (edgesentry-rs, edgesentry-app) and the Ed25519 / BLAKE3 evidence chain are design-complete; implementation begins after trial contract award. During the PoC, Phase B handoff is simulated: the analyst manually records patrol outcomes in the dashboard feedback panel (§ 5). The `candidate_watchlist.parquet` export and dispatch brief PDF are production-ready.
 
 ---
 
 ## 7. Week 7 Trial Report Reference
 
 This SOP is referenced in the Week 7 trial deliverables. The trial report will include:
-- Aggregate dispatch decision log (count by tier; no vessel-specific PII unless Cap Vista consents)
+- Aggregate dispatch decision log (count by tier; no vessel-specific PII unless client consents)
 - Feedback loop summary: labels added, recalibration events triggered
 - Recommendation for any SOP amendments based on 7-week operational experience

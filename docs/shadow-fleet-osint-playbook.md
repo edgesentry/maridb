@@ -141,4 +141,4 @@ To find when arktrace first scored a vessel, check the causal effects history or
 
 ## Recommended frequency
 
-Run this playbook **weekly** to maintain a live OSINT-matched watchlist for the pitch and for Cap Vista PoC demonstration.
+Run this playbook **weekly** to maintain a live OSINT-matched watchlist.

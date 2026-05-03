@@ -24,11 +24,11 @@ Two distinct P@50 thresholds exist and must not be confused:
 
 | Metric | Threshold | Role | Scope | Enforcement |
 |--------|-----------|------|-------|-------------|
-| **Precision@50** | ≥ 0.60 | **Contractual Acceptance Gate** — minimum commitment to Cap Vista in the Scope of Work | Cap Vista trial | Annex A § 1; Week 7 trial report |
+| **Precision@50** | ≥ 0.60 | **Contractual acceptance gate** — minimum commitment in the Scope of Work | Trial deployment | Annex A § 1; Week 7 trial report |
 | **Precision@50** | ≥ 0.68 | **Demonstrated Technical Ceiling** — achieved on multi-region public-data backtesting; internal CI regression gate | Multi-region (≥ 50 labeled positives) | Manual review via `scripts/run_public_backtest_batch.py` |
 | **Precision@50** | ≥ 0.25 | **Integration test floor** — catches a genuinely broken scorer | Single-region | CI (`tests/test_public_data_backtest_integration.py`, #235) |
 
-The 0.68 figure is a position of strength — it reflects what the model has already demonstrated on public data, not an additional promise to Cap Vista. The contractual obligation is 0.60. The 0.68 CI gate prevents regression below the demonstrated ceiling.
+The 0.68 figure is a position of strength — it reflects what the model has already demonstrated on public data, not an additional contractual promise. The contractual obligation is 0.60. The 0.68 CI gate prevents regression below the demonstrated ceiling.
 
 > **Structural ceiling note**: For a single-region labeled set with N positives and M negatives where N + M < 50, the maximum achievable P@50 = N / (N + M). Perfect ranking still falls short of 0.68 in low-label-density regions. AUROC is the more informative metric in this case.
 
@@ -55,7 +55,7 @@ arktrace distinguishes two evaluation modes. These must not be conflated when re
 
 | Mode | Flag | Purpose | Valid for |
 |---|---|---|---|
-| **Blind** | *(no `--seed-dummy`)* | Canonical performance measurement on live public-label data | Published baselines, Cap Vista reporting, CI regression gate |
+| **Blind** | *(no `--seed-dummy`)* | Canonical performance measurement on live public-label data | Published baselines, reporting, CI regression gate |
 | **Seeded (demo)** | `--seed-dummy` | CI floor check — verifies scorer is not broken by injecting 10 known OFAC vessels with synthetic positions | Local smoke test, CI known-case gate only |
 
 **Why seeded metrics are higher:** The 10 injected vessels (CELINE, ELINE, REX 1, ANHONA, etc.) are confirmed OFAC positives with synthetic AIS positions crafted to produce high anomaly scores. A seeded run guarantees these vessels surface in the top-50, mechanically inflating AUROC, P@50, and Recall.

@@ -1,6 +1,6 @@
 # Trial Specification
 
-This document addresses the Cap Vista Solicitation 5.0 Challenge 1 "Trial Specifications" requirement:
+This document addresses the PoC deployment "Trial Specifications" requirement:
 
 > *Propose the datasets and their formats. Platform technical requirements to perform the analysis.*
 

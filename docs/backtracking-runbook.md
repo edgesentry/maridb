@@ -128,7 +128,7 @@ A feature is flagged as a precursor signal when its average in the **0–90 day 
 | `shared_manager` | 0.60 | Co-managed vessel (same technical manager) |
 | `sts_contact` | 0.50 | Vessel with recorded STS co-location contact |
 
-## Demo scenario (Cap Vista)
+## Demo scenario
 
 1. Replay Jan–Mar AIS where vessels are still gray
 2. Ingest one delayed confirmed-black label on Apr 1:

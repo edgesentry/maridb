@@ -1,6 +1,6 @@
 # Arktrace: The 3-Week Intensive Study Guide
 
-This guide is a 21-day curriculum for engineers and analysts to master the Arktrace codebase, the underlying maritime domain, and the causal inference mathematics required for the Cap Vista submission.
+This guide is a 21-day curriculum for engineers and analysts to master the Arktrace codebase, the underlying maritime domain, and the causal inference mathematics required for operational deployment.
 
 ---
 
@@ -19,14 +19,14 @@ Arktrace moves beyond simple anomalies to **Causal Intent**. Instead of asking "
 - **External Docs:** [OFAC Sanctions Search](https://sanctionssearch.ofac.treas.gov/), [Atlantic Council: Russia's Shadow Fleet](https://www.atlanticcouncil.org/blogs/econographics/russias-shadow-fleet-is-growing/).
 - **Internal Source:** `src/ingest/sanctions.py`, `src/ingest/vessel_registry.py`.
 
-### Day 2: The Cap Vista Challenge & Mission Alignment
-Arktrace is specifically designed to address the **Cap Vista Solicitation 5.0 (Challenge 1: Maritime Security Data Analytics)**. The challenge asks for solutions that can identify "sophisticated AIS spoofing, frequent name/flag changes, and illicit ship-to-ship (STS) transfers" to bypass international sanctions.
+### Day 2: Mission Alignment & Deployment Context
+Arktrace is designed to identify "sophisticated AIS spoofing, frequent name/flag changes, and illicit ship-to-ship (STS) transfers" to bypass international sanctions.
 
 The primary goal is to provide **Intelligence Analysts** and **Operational Commanders** with a 60–90 day lead time before a vessel is officially designated on a sanctions list. By catching these threats early, security agencies can intervene before the vessel enters sensitive waters or completes its illicit cargo transfer.
 
-A key requirement of the challenge is that the solution must have a "low computational cost to maximize edge deployments." This means the tool must be able to run on modest hardware at a Port Operations Center or even on a patrol vessel, rather than requiring a massive, expensive cloud-based supercomputer.
+A key operational requirement is that the solution must have a "low computational cost to maximize edge deployments." This means the tool must be able to run on modest hardware at a Port Operations Center or even on a patrol vessel, rather than requiring a massive, expensive cloud-based supercomputer.
 
-Understanding the "Annex A" submission requirements is critical. We frame Arktrace as a **TRL 6 baseline** system that is ready for a 7-week trial in the Singapore Strait. Every feature we build must map back to the specific "Shadow Fleet" behaviors named in the Cap Vista solicitation.
+Understanding the trial specification and Annex A requirements is critical. We frame Arktrace as a **TRL 6 baseline** system ready for a 7-week trial in the Singapore Strait. Every feature maps back to the specific "Shadow Fleet" behaviors named in the challenge statement.
 
 - **Internal Docs:** [docs/trial-specification.md](trial-specification.md).
 - **Internal Source:** `../arktrace-commercial/inputs/challenge-statements.md`.
@@ -271,14 +271,14 @@ For developers, Day 20 is about writing your first test case. You'll learn how t
 - **Internal Docs:** [docs/local-e2e-test.md](https://edgesentry.github.io/arktrace/local-e2e-test/), [docs/development.md](https://edgesentry.github.io/arktrace/development/) (Testing section).
 - **Internal Source:** `tests/`, `tests/test_scoring_pipeline.py`, `scripts/smoke_sar_feature.py`.
 
-### Day 21: Final Review & Cap Vista Submission Package
-The final day is about **Mission Finality**. You have studied the domain, the data engine, the science, the interface, and the development workflow. Now, you must see how all of this is synthesized into the final **Cap Vista Submission**.
+### Day 21: Final Review & Deployment Readiness
+The final day is about **Mission Finality**. You have studied the domain, the data engine, the science, the interface, and the development workflow. Now, you must see how all of this integrates into a production-ready deployment.
 
-You will review the `../arktrace-commercial/outputs/annex-a-submission.md` file one last time. This document is the culmination of all our work. It presents our **33-Day Lead Time Advantage**, our **TRL 6 baseline**, and our **Local-First edge architecture** as a single, cohesive solution for Singapore's maritime security.
+Review the `../arktrace-commercial/outputs/annex-a-submission.md` file. This document presents the **33-Day Lead Time Advantage**, the **TRL 6 baseline**, and the **Local-First edge architecture** as a cohesive solution for maritime security operations.
 
 The "Mastery Checklist" at the end of the guide is your final exam. If you can answer those five questions with confidence, you are ready to contribute to the Arktrace project as a senior engineer or analyst. You are now a master of the Causal Inference Engine for Shadow Fleet Prediction.
 
-Congratulations on completing the 3-week Arktrace Intensive. You are now equipped to help deliver a world-class maritime security solution for the Cap Vista challenge.
+Congratulations on completing the 3-week Arktrace Intensive. You are now equipped to help deliver a world-class maritime security solution.
 
 - **Internal Docs:** [docs/index.md](https://edgesentry.github.io/arktrace/index/).
 - **Internal Source:** `../arktrace-commercial/outputs/annex-a-submission.md`.
