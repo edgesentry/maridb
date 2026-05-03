@@ -15,7 +15,7 @@ Traditional monitoring systems rely on anomaly detection—spotting behavior tha
 
 Arktrace moves beyond simple anomalies to **Causal Intent**. Instead of asking "Does this vessel look strange?", we ask "Did this vessel's behavior change *specifically* because of a sanction announcement?". By correlating behavior with geopolitical events, we can separate genuine evaders from noisy background activity, allowing patrol resources to be dispatched with much higher confidence.
 
-- **Internal Docs:** [docs/background.md](background.md), [docs/scenarios.md](scenarios.md).
+- **Internal Docs:** [docs/background.md](https://edgesentry.github.io/arktrace/background/), [docs/scenarios.md](https://edgesentry.github.io/arktrace/scenarios/).
 - **External Docs:** [OFAC Sanctions Search](https://sanctionssearch.ofac.treas.gov/), [Atlantic Council: Russia's Shadow Fleet](https://www.atlanticcouncil.org/blogs/econographics/russias-shadow-fleet-is-growing/).
 - **Internal Source:** `src/ingest/sanctions.py`, `src/ingest/vessel_registry.py`.
 
@@ -40,7 +40,7 @@ By choosing in-process tools like DuckDB and Polars, we eliminate the complexity
 
 Finally, this architecture provides total **Data Sovereignty**. In national security contexts, moving sensitive vessel tracking data to a third-party cloud provider is often a compliance nightmare. With Arktrace, the data stays on the device. All scores, graphs, and LLM-generated summaries are computed locally, satisfying the strictest security and privacy requirements.
 
-- **Internal Docs:** [docs/architecture.md](architecture.md), [docs/technical-solution.md](technical-solution.md).
+- **Internal Docs:** [docs/architecture.md](https://edgesentry.github.io/arktrace/architecture/), [docs/technical-solution.md](https://edgesentry.github.io/arktrace/technical-solution/).
 - **External Docs:** [Local-First Software (Ink & Switch)](https://www.inkandswitch.com/local-first/).
 - **Internal Source:** `src/storage/config.py`, `docker-compose.yml`.
 
@@ -148,7 +148,7 @@ When an analyst clicks on a vessel, they don't just see a score; they see a **Si
 
 For the self-learner, look at the `explain_vessel` function in `src/score/composite.py`. We use a "TreeExplainer" which is optimized for our Isolation Forest model. This allows us to generate these detailed explanations in under 100 milliseconds, ensuring the dashboard remains fast and responsive for the operator.
 
-- **Internal Docs:** [docs/technical-solution.md](technical-solution.md) (Explainability section).
+- **Internal Docs:** [docs/technical-solution.md](https://edgesentry.github.io/arktrace/technical-solution/) (Explainability section).
 - **External Docs:** [SHAP: Game Theory explainability](https://shap.readthedocs.io/en/latest/overviews.html).
 - **Internal Source:** `src/score/composite.py` (`explain_vessel` function).
 
@@ -174,7 +174,7 @@ To solve this, we use **HC3 Robust Standard Errors**. This is a sophisticated ma
 
 For developers, it's important to note that we implement this directly in NumPy to avoid the overhead of heavy statistics libraries. This ensures that even our most advanced mathematical models can run in milliseconds on an edge laptop. Understanding the `run_causal_model` function in `src/score/causal_sanction.py` is the key to mastering the Arktrace "brain."
 
-- **Internal Docs:** [docs/technical-solution.md](technical-solution.md) (C3 section).
+- **Internal Docs:** [docs/technical-solution.md](https://edgesentry.github.io/arktrace/technical-solution/) (C3 section).
 - **External Docs:** [HC3 Robust Errors Paper (Long & Ervin)](https://www.jstor.org/stable/2683931).
 - **Internal Source:** `src/score/causal_sanction.py` (OLS with HC3 implementation).
 
@@ -204,7 +204,7 @@ By strictly limiting the LLM to the pre-computed SHAP signals and Causal ATT est
 
 For developers, the key is mastering **Prompt Engineering** in `src/api/routes/briefs.py`. You'll learn how to format the SHAP signals and Causal ATT values into a prompt that forces the LLM to act as a disciplined intelligence officer, citing specific data points for every claim it makes.
 
-- **Internal Docs:** [docs/local-llm-setup.md](local-llm-setup.md), [docs/technical-solution.md](technical-solution.md) (Verifiable AI section).
+- **Internal Docs:** [docs/local-llm-setup.md](https://edgesentry.github.io/arktrace/local-llm-setup/), [docs/technical-solution.md](https://edgesentry.github.io/arktrace/technical-solution/) (Verifiable AI section).
 - **External Docs:** [Prompt Engineering Guide](https://www.promptingguide.ai/).
 - **Internal Source:** `src/api/routes/briefs.py`, `src/api/llm.py`.
 
@@ -217,7 +217,7 @@ We expose the local LLM via an **OpenAI-compatible REST endpoint** (`llama-serve
 
 The default model is `bartowski/Qwen2.5-7B-Instruct-GGUF` (Q4_K_M, ~4.4 GB), licensed under Apache 2.0 — commercially safe with no government or defence restrictions. For developers, Day 16 is about learning how to select the right GGUF quantisation (Q4_K_M vs Q8_0) to balance quality and memory on constrained edge hardware.
 
-- **Internal Docs:** [docs/local-llm-setup.md](local-llm-setup.md).
+- **Internal Docs:** [docs/local-llm-setup.md](https://edgesentry.github.io/arktrace/local-llm-setup/).
 - **External Docs:** [llama.cpp install guide](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md), [GGUF quantisation guide](https://github.com/ggml-org/llama.cpp/blob/master/docs/quantization.md).
 - **Internal Source:** `scripts/run_app.sh`, `src/api/llm.py`.
 
@@ -230,7 +230,7 @@ We also use **SSE (Server-Sent Events)** for real-time alerts. When the ingestio
 
 For learners, the `src/api/` folder is your playground. You'll see how we use Jinja templates and HTMX to build a "Modern Web" experience with almost zero JavaScript. This is the "Simplify to Scale" philosophy—by keeping the tech stack lean, we make it easier to deploy and maintain in challenging field environments.
 
-- **Internal Docs:** [docs/architecture.md](architecture.md) (UI Layer).
+- **Internal Docs:** [docs/architecture.md](https://edgesentry.github.io/arktrace/architecture/) (UI Layer).
 - **External Docs:** [HTMX: High Power Tools](https://htmx.org/essays/).
 - **Internal Source:** `src/api/main.py`, `src/api/routes/`.
 
@@ -243,7 +243,7 @@ MinIO also provides a **Console UI** on port 9001. This is where analysts can ma
 
 For developers, understanding the MinIO setup is key to troubleshooting data persistence issues. You'll learn how the `docker-compose.infra.yml` file manages the MinIO volumes and how to use the `s3fs` library in Python to interact with local buckets as if they were cloud storage.
 
-- **Internal Docs:** [docs/deployment.md](deployment.md).
+- **Internal Docs:** [docs/deployment.md](https://edgesentry.github.io/arktrace/deployment/).
 - **External Docs:** [MinIO Documentation](https://min.io/docs/minio/linux/index.html).
 - **Internal Source:** `src/storage/config.py`, `docker-compose.infra.yml`.
 
@@ -268,7 +268,7 @@ Troubleshooting in Arktrace is done via **Log Analysis**. We use a centralized l
 
 For developers, Day 20 is about writing your first test case. You'll learn how to use `pytest` fixtures to set up a temporary DuckDB environment and how to use `assert` statements to verify that your new feature is producing the correct mathematical output.
 
-- **Internal Docs:** [docs/local-e2e-test.md](local-e2e-test.md), [docs/development.md](development.md) (Testing section).
+- **Internal Docs:** [docs/local-e2e-test.md](https://edgesentry.github.io/arktrace/local-e2e-test/), [docs/development.md](https://edgesentry.github.io/arktrace/development/) (Testing section).
 - **Internal Source:** `tests/`, `tests/test_scoring_pipeline.py`, `scripts/smoke_sar_feature.py`.
 
 ### Day 21: Final Review & Cap Vista Submission Package
@@ -280,7 +280,7 @@ The "Mastery Checklist" at the end of the guide is your final exam. If you can a
 
 Congratulations on completing the 3-week Arktrace Intensive. You are now equipped to help deliver a world-class maritime security solution for the Cap Vista challenge.
 
-- **Internal Docs:** [docs/index.md](index.md).
+- **Internal Docs:** [docs/index.md](https://edgesentry.github.io/arktrace/index/).
 - **Internal Source:** `../arktrace-commercial/outputs/annex-a-submission.md`.
 
 ---

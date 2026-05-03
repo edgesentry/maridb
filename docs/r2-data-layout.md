@@ -253,7 +253,7 @@ R2 credentials are read from environment variables (or `.env`):
 These credentials are **only** used by `sync_r2.py` and `bootstrap.py` for
 push/pull. The dashboard always reads from local disk — setting these
 variables does not route app reads to R2 (see `USE_S3` in
-[Deployment](deployment.md) for the opt-in S3 serving mode).
+[Deployment](https://edgesentry.github.io/arktrace/deployment/) for the opt-in S3 serving mode).
 
 **Read-only pulls require no credentials.** The `arktrace-public` bucket is
 fully public (Cloudflare R2 → Settings → Public Access). Set only
