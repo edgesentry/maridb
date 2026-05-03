@@ -27,22 +27,26 @@ class TestGate1Validation:
         validate_output(df, "watchlist")  # should not raise
 
     def test_accepts_valid_vessel_features(self):
-        df = pl.DataFrame({
-            "mmsi": ["123456789"],
-            "ais_gap_count_30d": [3],
-            "loitering_hours_30d": [12.5],
-            "sanctions_distance": [2],
-        })
+        df = pl.DataFrame(
+            {
+                "mmsi": ["123456789"],
+                "ais_gap_count_30d": [3],
+                "loitering_hours_30d": [12.5],
+                "sanctions_distance": [2],
+            }
+        )
         validate_output(df, "vessel_features")
 
     def test_accepts_valid_voyage_evidence(self):
-        df = pl.DataFrame({
-            "vessel_id": ["IMO9876543"],
-            "voyage_id": ["V001"],
-            "track_start_utc": ["2026-04-23T10:00:00Z"],
-            "track_end_utc": ["2026-04-28T05:55:00Z"],
-            "positions_count": [1842],
-        })
+        df = pl.DataFrame(
+            {
+                "vessel_id": ["IMO9876543"],
+                "voyage_id": ["V001"],
+                "track_start_utc": ["2026-04-23T10:00:00Z"],
+                "track_end_utc": ["2026-04-28T05:55:00Z"],
+                "positions_count": [1842],
+            }
+        )
         validate_output(df, "voyage_evidence")
 
     def test_unknown_output_type_raises(self):
@@ -55,6 +59,7 @@ class TestGate2Distribute:
     def test_push_rejects_missing_columns(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DATA_DIR", str(tmp_path))
         from pipelines.distribute.push import _validate
+
         df = pl.DataFrame({"mmsi": ["123"]})
         result = _validate(df, required_columns=["mmsi", "composite_score"])
         assert not result.ok
@@ -62,6 +67,7 @@ class TestGate2Distribute:
     def test_push_accepts_valid_watchlist(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DATA_DIR", str(tmp_path))
         from pipelines.distribute.push import _validate
+
         df = pl.DataFrame({"mmsi": ["123456789"], "composite_score": [0.72]})
         result = _validate(df, required_columns=["mmsi", "composite_score"])
         assert result.ok
@@ -77,6 +83,7 @@ class TestGate2Distribute:
         df.write_parquet(source_dir / "singapore_watchlist.parquet")
 
         from pipelines.distribute.push import push_arktrace_watchlist
+
         ok = push_arktrace_watchlist("singapore")
         assert ok
 

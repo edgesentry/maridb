@@ -45,6 +45,7 @@ def mod():
 # _validate_region
 # ---------------------------------------------------------------------------
 
+
 class TestValidateRegion:
     def test_passes_clean_data(self, mod):
         df = _make_df()
@@ -88,12 +89,14 @@ class TestValidateRegion:
 
     def test_fails_high_duplicate_rate(self, mod):
         now = datetime.now(UTC)
-        df = pl.DataFrame({
-            "mmsi": ["123456789"] * 200 + ["999999999"],
-            "timestamp": [now] * 201,
-            "lat": [35.0] * 201,
-            "lon": [139.0] * 201,
-        })
+        df = pl.DataFrame(
+            {
+                "mmsi": ["123456789"] * 200 + ["999999999"],
+                "timestamp": [now] * 201,
+                "lat": [35.0] * 201,
+                "lon": [139.0] * 201,
+            }
+        )
         result = mod._validate_region(df, "europe", "2026-04-29", is_recent=True)
         assert result["pass"] is False
 
@@ -102,9 +105,11 @@ class TestValidateRegion:
 # main() integration
 # ---------------------------------------------------------------------------
 
+
 class TestMain:
-    def _setup(self, mod, region_data_by_date: dict, tmp_path: Path, monkeypatch,
-               validate_days: int = 3) -> int:
+    def _setup(
+        self, mod, region_data_by_date: dict, tmp_path: Path, monkeypatch, validate_days: int = 3
+    ) -> int:
         monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test")
         monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test")
         monkeypatch.setenv("VALIDATE_DAYS", str(validate_days))
@@ -113,6 +118,7 @@ class TestMain:
         class _FakeFS:
             def open_output_stream(self, path):
                 import io
+
                 return io.BytesIO()
 
         monkeypatch.setattr(mod, "_build_fs", lambda: _FakeFS())

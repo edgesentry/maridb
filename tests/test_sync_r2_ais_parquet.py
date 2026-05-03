@@ -6,18 +6,16 @@ import argparse
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import polars as pl
 import pyarrow as pa
-import pyarrow.parquet as pq
-import pytest
 
 import scripts.sync_r2 as sync_r2
 
 
 def _make_duckdb(path: Path, n_rows: int = 5, with_vessel_meta: bool = False) -> Path:
     """Create a minimal DuckDB with ais_positions (and optionally vessel_meta) rows."""
-    import duckdb
     from datetime import UTC, datetime, timedelta
+
+    import duckdb
 
     con = duckdb.connect(str(path))
     con.execute("""
@@ -27,8 +25,10 @@ def _make_duckdb(path: Path, n_rows: int = 5, with_vessel_meta: bool = False) ->
         )
     """)
     base = datetime(2026, 4, 1, tzinfo=UTC)
-    rows = [(f"24000{i:04d}", base + timedelta(hours=i), 1.3, 103.8, 12.0, 180.0, 0, 70)
-            for i in range(n_rows)]
+    rows = [
+        (f"24000{i:04d}", base + timedelta(hours=i), 1.3, 103.8, 12.0, 180.0, 0, 70)
+        for i in range(n_rows)
+    ]
     con.executemany("INSERT INTO ais_positions VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows)
 
     if with_vessel_meta:
@@ -50,11 +50,14 @@ class TestPushAisParquet:
     def test_skips_small_db(self, tmp_path):
         """push-ais-parquet returns 1 when no eligible (>=1MB) DBs are found."""
         import duckdb
+
         db = tmp_path / "singapore.duckdb"
         con = duckdb.connect(str(db))
-        con.execute("CREATE TABLE ais_positions (mmsi VARCHAR, timestamp TIMESTAMPTZ, "
-                    "lat DOUBLE, lon DOUBLE, sog FLOAT, cog FLOAT, nav_status TINYINT, "
-                    "ship_type TINYINT)")
+        con.execute(
+            "CREATE TABLE ais_positions (mmsi VARCHAR, timestamp TIMESTAMPTZ, "
+            "lat DOUBLE, lon DOUBLE, sog FLOAT, cog FLOAT, nav_status TINYINT, "
+            "ship_type TINYINT)"
+        )
         con.close()
         # File is < 1 MB so _ais_db_candidates skips it
         args = argparse.Namespace(
@@ -79,9 +82,11 @@ class TestPushAisParquet:
         args = argparse.Namespace(
             data_dir=str(tmp_path), staging_dir=str(tmp_path / "staging"), regions="singapore"
         )
-        with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
-             patch.object(sync_r2, "_ais_db_candidates", return_value=[db]), \
-             patch("pyarrow.parquet.write_table", side_effect=fake_write_table):
+        with (
+            patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs),
+            patch.object(sync_r2, "_ais_db_candidates", return_value=[db]),
+            patch("pyarrow.parquet.write_table", side_effect=fake_write_table),
+        ):
             rc = sync_r2.cmd_push_ais_parquet(args)
 
         assert rc == 0
@@ -107,9 +112,11 @@ class TestPushAisParquet:
         args = argparse.Namespace(
             data_dir=str(tmp_path), staging_dir=str(tmp_path / "staging"), regions="singapore"
         )
-        with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
-             patch.object(sync_r2, "_ais_db_candidates", return_value=[db]), \
-             patch("pyarrow.parquet.write_table", side_effect=fake_write_table):
+        with (
+            patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs),
+            patch.object(sync_r2, "_ais_db_candidates", return_value=[db]),
+            patch("pyarrow.parquet.write_table", side_effect=fake_write_table),
+        ):
             rc = sync_r2.cmd_push_ais_parquet(args)
 
         assert rc == 0
@@ -124,8 +131,9 @@ class TestPushAisParquet:
 
     def test_uploads_sentinel_when_db_empty(self, tmp_path):
         """push-ais-parquet uploads an empty sentinel for today when DB has 0 rows."""
-        import duckdb
         from datetime import date
+
+        import duckdb
 
         db = tmp_path / "singapore.duckdb"
         con = duckdb.connect(str(db))
@@ -149,9 +157,11 @@ class TestPushAisParquet:
         args = argparse.Namespace(
             data_dir=str(tmp_path), staging_dir=str(tmp_path / "staging"), regions="singapore"
         )
-        with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
-             patch.object(sync_r2, "_ais_db_candidates", return_value=[db]), \
-             patch("pyarrow.parquet.write_table", side_effect=fake_write_table):
+        with (
+            patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs),
+            patch.object(sync_r2, "_ais_db_candidates", return_value=[db]),
+            patch("pyarrow.parquet.write_table", side_effect=fake_write_table),
+        ):
             rc = sync_r2.cmd_push_ais_parquet(args)
 
         assert rc == 0
@@ -180,9 +190,11 @@ class TestPushAisParquet:
         args = argparse.Namespace(
             data_dir=str(tmp_path), staging_dir=str(tmp_path / "staging"), regions="singapore"
         )
-        with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
-             patch.object(sync_r2, "_ais_db_candidates", return_value=[db]), \
-             patch("pyarrow.parquet.write_table", side_effect=fake_write_table):
+        with (
+            patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs),
+            patch.object(sync_r2, "_ais_db_candidates", return_value=[db]),
+            patch("pyarrow.parquet.write_table", side_effect=fake_write_table),
+        ):
             rc = sync_r2.cmd_push_ais_parquet(args)
 
         assert rc == 0
@@ -207,9 +219,11 @@ class TestVesselMetaPush:
         args = argparse.Namespace(
             data_dir=str(tmp_path), staging_dir=str(tmp_path / "staging"), regions="singapore"
         )
-        with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
-             patch.object(sync_r2, "_ais_db_candidates", return_value=[db]), \
-             patch("pyarrow.parquet.write_table", side_effect=fake_write_table):
+        with (
+            patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs),
+            patch.object(sync_r2, "_ais_db_candidates", return_value=[db]),
+            patch("pyarrow.parquet.write_table", side_effect=fake_write_table),
+        ):
             rc = sync_r2.cmd_push_ais_parquet(args)
 
         assert rc == 0
@@ -233,9 +247,11 @@ class TestVesselMetaPush:
         args = argparse.Namespace(
             data_dir=str(tmp_path), staging_dir=str(tmp_path / "staging"), regions="singapore"
         )
-        with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
-             patch.object(sync_r2, "_ais_db_candidates", return_value=[db]), \
-             patch("pyarrow.parquet.write_table", side_effect=fake_write_table):
+        with (
+            patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs),
+            patch.object(sync_r2, "_ais_db_candidates", return_value=[db]),
+            patch("pyarrow.parquet.write_table", side_effect=fake_write_table),
+        ):
             rc = sync_r2.cmd_push_ais_parquet(args)
 
         assert rc == 0
@@ -244,6 +260,7 @@ class TestVesselMetaPush:
     def test_skips_vessel_meta_on_schema_validation_failure(self, tmp_path):
         """push-ais-parquet skips vessel_meta upload when schema validation fails."""
         import duckdb
+
         db = tmp_path / "singapore.duckdb"
         con = duckdb.connect(str(db))
         con.execute("""
@@ -253,8 +270,11 @@ class TestVesselMetaPush:
             )
         """)
         from datetime import UTC, datetime
-        con.execute("INSERT INTO ais_positions VALUES (?,?,?,?,?,?,?,?)",
-                    ["123456789", datetime(2026,4,1,tzinfo=UTC), 1.3, 103.8, 12.0, 180.0, 0, 70])
+
+        con.execute(
+            "INSERT INTO ais_positions VALUES (?,?,?,?,?,?,?,?)",
+            ["123456789", datetime(2026, 4, 1, tzinfo=UTC), 1.3, 103.8, 12.0, 180.0, 0, 70],
+        )
         # vessel_meta missing required mmsi column → validation should fail
         con.execute("CREATE TABLE vessel_meta (bad_col VARCHAR)")
         con.execute("INSERT INTO vessel_meta VALUES ('oops')")
@@ -271,9 +291,11 @@ class TestVesselMetaPush:
         args = argparse.Namespace(
             data_dir=str(tmp_path), staging_dir=str(tmp_path / "staging"), regions="singapore"
         )
-        with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
-             patch.object(sync_r2, "_ais_db_candidates", return_value=[db]), \
-             patch("pyarrow.parquet.write_table", side_effect=fake_write_table):
+        with (
+            patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs),
+            patch.object(sync_r2, "_ais_db_candidates", return_value=[db]),
+            patch("pyarrow.parquet.write_table", side_effect=fake_write_table),
+        ):
             rc = sync_r2.cmd_push_ais_parquet(args)
 
         # rc may be 0 (positions skipped due to date filter) or non-zero; key check is no vm upload
@@ -298,19 +320,31 @@ class TestVesselMetaPull:
 
         # get_file_info: first call lists ais/, second call checks vm file exists
         mock_fs.get_file_info.side_effect = [
-            [pos_info],           # listing ais/
-            [vm_info],            # checking vessel_meta file info
+            [pos_info],  # listing ais/
+            [vm_info],  # checking vessel_meta file info
         ]
 
-        pos_table = pa.table({
-            "mmsi": ["123456789"], "timestamp": pa.array([0], type=pa.timestamp("us", tz="UTC")),
-            "lat": [1.3], "lon": [103.8], "sog": [12.0], "cog": [180.0],
-            "nav_status": [0], "ship_type": [70],
-        })
-        vm_table = pa.table({
-            "mmsi": ["123456789"], "imo": ["9000001"], "name": ["TEST VESSEL"],
-            "flag": ["SG"], "ship_type": [70],
-        })
+        pos_table = pa.table(
+            {
+                "mmsi": ["123456789"],
+                "timestamp": pa.array([0], type=pa.timestamp("us", tz="UTC")),
+                "lat": [1.3],
+                "lon": [103.8],
+                "sog": [12.0],
+                "cog": [180.0],
+                "nav_status": [0],
+                "ship_type": [70],
+            }
+        )
+        vm_table = pa.table(
+            {
+                "mmsi": ["123456789"],
+                "imo": ["9000001"],
+                "name": ["TEST VESSEL"],
+                "flag": ["SG"],
+                "ship_type": [70],
+            }
+        )
 
         read_calls = []
 
@@ -320,9 +354,11 @@ class TestVesselMetaPull:
                 return vm_table
             return pos_table
 
-        with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
-             patch("pyarrow.parquet.read_table", side_effect=fake_read_table), \
-             patch("pyarrow.parquet.write_table"):
+        with (
+            patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs),
+            patch("pyarrow.parquet.read_table", side_effect=fake_read_table),
+            patch("pyarrow.parquet.write_table"),
+        ):
             args = argparse.Namespace(data_dir=str(tmp_path), regions="singapore", days=60)
             rc = sync_r2.cmd_pull_ais_parquet(args)
 
@@ -339,13 +375,20 @@ class TestVesselMetaPull:
 
         mock_fs = MagicMock()
         mock_fs.get_file_info.side_effect = [
-            [],       # no positions
-            [MagicMock(type=pafs.FileType.File, size=256,
-                       path="maridb-public/vessel_meta/region=singapore.parquet")],
+            [],  # no positions
+            [
+                MagicMock(
+                    type=pafs.FileType.File,
+                    size=256,
+                    path="maridb-public/vessel_meta/region=singapore.parquet",
+                )
+            ],
         ]
 
-        with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
-             patch("pyarrow.parquet.read_table") as mock_read:
+        with (
+            patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs),
+            patch("pyarrow.parquet.read_table") as mock_read,
+        ):
             args = argparse.Namespace(data_dir=str(tmp_path), regions="singapore", days=60)
             sync_r2.cmd_pull_ais_parquet(args)
 
@@ -366,12 +409,23 @@ class TestPullAisParquet:
         remote_info.type = pafs.FileType.File
         mock_fs.get_file_info.return_value = [remote_info]
 
-        table = pa.table({"mmsi": ["123456789"], "timestamp": pa.array([0], type=pa.timestamp("us", tz="UTC")),
-                          "lat": [1.3], "lon": [103.8], "sog": [12.0], "cog": [180.0],
-                          "nav_status": [0], "ship_type": [70]})
-        with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
-             patch("pyarrow.parquet.read_table", return_value=table), \
-             patch("pyarrow.parquet.write_table"):
+        table = pa.table(
+            {
+                "mmsi": ["123456789"],
+                "timestamp": pa.array([0], type=pa.timestamp("us", tz="UTC")),
+                "lat": [1.3],
+                "lon": [103.8],
+                "sog": [12.0],
+                "cog": [180.0],
+                "nav_status": [0],
+                "ship_type": [70],
+            }
+        )
+        with (
+            patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs),
+            patch("pyarrow.parquet.read_table", return_value=table),
+            patch("pyarrow.parquet.write_table"),
+        ):
             args = argparse.Namespace(data_dir=str(tmp_path), regions=None, days=60)
             rc = sync_r2.cmd_pull_ais_parquet(args)
 
@@ -395,8 +449,10 @@ class TestPullAisParquet:
         # First call: list ais/; subsequent calls: vessel_meta not found
         mock_fs.get_file_info.side_effect = [[remote_info], [not_found]]
 
-        with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
-             patch("pyarrow.parquet.read_table") as mock_read:
+        with (
+            patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs),
+            patch("pyarrow.parquet.read_table") as mock_read,
+        ):
             args = argparse.Namespace(data_dir=str(tmp_path), regions="singapore", days=60)
             rc = sync_r2.cmd_pull_ais_parquet(args)
 
@@ -416,8 +472,10 @@ class TestPullAisParquet:
         not_found.type = pafs.FileType.NotFound
         mock_fs.get_file_info.side_effect = [[old_info], [not_found]]
 
-        with patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs), \
-             patch("pyarrow.parquet.read_table") as mock_read:
+        with (
+            patch.object(sync_r2, "_build_r2_fs", return_value=mock_fs),
+            patch("pyarrow.parquet.read_table") as mock_read,
+        ):
             args = argparse.Namespace(data_dir=str(tmp_path), regions="singapore", days=30)
             rc = sync_r2.cmd_pull_ais_parquet(args)
 
