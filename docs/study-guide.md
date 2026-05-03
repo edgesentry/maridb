@@ -28,7 +28,7 @@ A key operational requirement is that the solution must have a "low computationa
 
 Understanding the trial specification and Annex A requirements is critical. We frame Arktrace as a **TRL 6 baseline** system ready for a 7-week trial in the Singapore Strait. Every feature maps back to the specific "Shadow Fleet" behaviors named in the challenge statement.
 
-- **Internal Docs:** [docs/trial-specification.md](trial-specification.md).
+- **Internal Docs:** docs/trial-specification.md (archived).
 - **Internal Source:** `../arktrace-commercial/inputs/challenge-statements.md`.
 
 ### Day 3: Tactical Edge Vision & Architecture
