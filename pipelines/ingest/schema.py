@@ -23,8 +23,8 @@ def _default_db_path() -> str:
 
     Resolution order:
     1. ``DB_PATH`` env var (explicit override — used in dev and CI)
-    2. ``MARIDB_DATA_DIR`` + ``MARIDB_REGION`` (user config)
-    3. ``~/.indago/data/<region>.duckdb`` (standard user-level location)
+    2. ``ARKTRACE_DATA_DIR`` + ``ARKTRACE_REGION`` (user config)
+    3. ``~/.arktrace/data/<region>.duckdb`` (standard user-level location)
     """
     if explicit := os.getenv("DB_PATH"):
         return explicit
@@ -37,12 +37,12 @@ def _default_db_path() -> str:
         "europe": "europe",
         "gulf": "gulf",
     }
-    region = os.getenv("MARIDB_REGION", "singapore").lower().strip()
+    region = os.getenv("ARKTRACE_REGION", "singapore").lower().strip()
     stem = _REGION_TO_STEM.get(region, "singapore")
     data_dir = (
-        Path(os.getenv("MARIDB_DATA_DIR", "")).expanduser()
-        if os.getenv("MARIDB_DATA_DIR")
-        else Path.home() / ".maridb" / "data"
+        Path(os.getenv("ARKTRACE_DATA_DIR", "")).expanduser()
+        if os.getenv("ARKTRACE_DATA_DIR")
+        else Path.home() / ".arktrace" / "data"
     )
     return str(data_dir / f"{stem}.duckdb")
 
@@ -86,6 +86,14 @@ def init_schema(db_path: str = DEFAULT_DB_PATH) -> None:
                 flag        VARCHAR,
                 type        VARCHAR,
                 list_source VARCHAR NOT NULL
+            )
+        """)
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS equasis_vessel_ref (
+                imo         VARCHAR PRIMARY KEY,
+                vessel_type TINYINT,
+                build_year  SMALLINT,
+                scrapped    BOOLEAN DEFAULT FALSE
             )
         """)
         con.execute("""
@@ -242,6 +250,22 @@ def init_schema(db_path: str = DEFAULT_DB_PATH) -> None:
         con.execute("""
             ALTER TABLE vessel_features
             ADD COLUMN IF NOT EXISTS sanctions_list_count INTEGER DEFAULT 0
+        """)
+        con.execute("""
+            ALTER TABLE vessel_features
+            ADD COLUMN IF NOT EXISTS imo_type_mismatch BOOLEAN DEFAULT FALSE
+        """)
+        con.execute("""
+            ALTER TABLE vessel_features
+            ADD COLUMN IF NOT EXISTS imo_scrapped_flag BOOLEAN DEFAULT FALSE
+        """)
+        con.execute("""
+            ALTER TABLE vessel_features
+            ADD COLUMN IF NOT EXISTS chokepoint_exit_gap_count INTEGER DEFAULT 0
+        """)
+        con.execute("""
+            ALTER TABLE vessel_features
+            ADD COLUMN IF NOT EXISTS ais_pre_gap_regularity FLOAT DEFAULT 1.0
         """)
     finally:
         con.close()
