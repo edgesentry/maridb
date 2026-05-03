@@ -1,9 +1,5 @@
 # Cost and Scaling
 
-This document addresses the operational deployment Challenge 1 "Option Cost" requirement:
-
-> *Cost of scaling the solution*
-
 ---
 
 ## 1. Software Cost
@@ -92,21 +88,6 @@ Scaling cost is driven by three factors:
 Storage growth rate: ~20 GB/month per regional AIS stream. At 5 regions: ~100 GB/month, or ~$2.30/month on S3-standard.
 
 **Multi-region scaling strategy:** one DuckDB file per region (e.g. `data/processed/europe.duckdb`); shared Lance Graph for ownership data (global). Each region's pipeline run is independent and can execute in parallel on separate VMs or cores. See [docs/regional-playbooks.md](regional-playbooks.md) for per-region configuration.
-
----
-
-## 6. Engagement Pricing — Phase C
-
-Following successful PoC completion, ongoing engineering and operations transition to a Phase C retainer. Pricing reflects a single-client engagement with the Principal Architect as sole engineer; rates are adjusted proportionally if additional client engagements are brought to the same infrastructure base.
-
-| Tier | Scope | Monthly retainer (SGD) |
-|---|---|---|
-| **Tier 2 — Managed Operations** | Ongoing monitoring, model recalibration, region expansion, maintenance; cloud infrastructure at pre-agreed cap | **$22,000 / month** |
-| **Tier 3 — Expanded Team** | All Tier 2 scope + additional engineers, SLA-backed operations, parallel engineering workstreams | **$30,000–$38,000 / month** |
-
-**Multi-client adjustment:** Tier 2 and Tier 3 rates above assume a dedicated single-client engagement. If the client introduces additional agency clients to the same arktrace deployment, the retainer is renegotiated on a cost-sharing basis — reducing the per-client cost proportionally.
-
-**Infrastructure cost cap:** cloud infrastructure costs are pre-agreed at contract signing and billed at cost with no markup. On-premises deployment eliminates cloud costs entirely.
 
 ---
 
