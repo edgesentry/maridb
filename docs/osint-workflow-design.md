@@ -132,7 +132,7 @@ Both cases require the same structured data:
 - Stateless MMSI detection (ITU MID lookup)
 - Pre-built MarineTraffic / VesselFinder / OFAC search URLs
 
-`scripts/osint_watchlist_check.py` was removed because its output was designed to be fed into a Claude Code session (Case A). The replacement approach — surfacing this data natively in arktrace's investigation panel and as a scheduled indago pipeline output — is tracked in [indago#86](https://github.com/edgesentry/indago/issues).
+`scripts/osint_watchlist_check.py` was removed because its output was designed to be fed into a Claude Code session (Case A). The replacement approach — surfacing this data natively in arktrace's investigation panel and as a scheduled indago pipeline output — is tracked in [indago#86](https://github.com/edgesentry/indago/issues/86).
 
 ---
 
@@ -142,9 +142,9 @@ Both cases require the same structured data:
 maridb-public R2
       │
       ▼
-osint_watchlist_check.py  ←── deterministic, shared
+candidate_watchlist.parquet + sanctions_entities  ←── deterministic, shared
       │
-      ├──► Case A: LLM session ──► human review ──► GH Issue (narrative)
+      ├──► Case A: arktrace investigation panel ──► human review ──► GH Issue
       │
       └──► Case B: scheduled workflow ──► structured report (automatic)
 ```
