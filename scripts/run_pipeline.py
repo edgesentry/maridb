@@ -345,11 +345,11 @@ def step_score(region: RegionConfig) -> bool:
             wl = pl.read_parquet(watchlist_path)
             if wl.height == 0:
                 logger.warning("  ⚠ validate [watchlist]: 0 rows written")
-            elif "composite_score" not in wl.columns:
-                logger.error("  ✗ validate [watchlist]: missing composite_score column")
+            elif "confidence" not in wl.columns:
+                logger.error("  ✗ validate [watchlist]: missing confidence column")
                 return False
             else:
-                logger.info("  ✓ validate [watchlist]: %d candidates, composite_score present", wl.height)
+                logger.info("  ✓ validate [watchlist]: %d candidates, confidence present", wl.height)
         except Exception as e:
             logger.error("  ✗ validate [watchlist]: %s", e)
             return False

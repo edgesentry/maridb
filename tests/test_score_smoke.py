@@ -8,7 +8,7 @@ from pipelines.storage.validate import PipelineValidationError, validate_output
 
 class TestGate1Validation:
     def test_rejects_empty_dataframe(self):
-        df = pl.DataFrame({"mmsi": [], "composite_score": []})
+        df = pl.DataFrame({"mmsi": [], "confidence": []})
         with pytest.raises(PipelineValidationError, match="row count"):
             validate_output(df, "watchlist")
 
@@ -18,12 +18,12 @@ class TestGate1Validation:
             validate_output(df, "watchlist")
 
     def test_rejects_null_in_required_column(self):
-        df = pl.DataFrame({"mmsi": [None], "composite_score": [0.5]})
+        df = pl.DataFrame({"mmsi": [None], "confidence": [0.5]})
         with pytest.raises(PipelineValidationError, match="null values"):
             validate_output(df, "watchlist")
 
     def test_accepts_valid_watchlist(self):
-        df = pl.DataFrame({"mmsi": ["123456789"], "composite_score": [0.72]})
+        df = pl.DataFrame({"mmsi": ["123456789"], "confidence": [0.72]})
         validate_output(df, "watchlist")  # should not raise
 
     def test_accepts_valid_vessel_features(self):
@@ -61,15 +61,15 @@ class TestGate2Distribute:
         from pipelines.distribute.push import _validate
 
         df = pl.DataFrame({"mmsi": ["123"]})
-        result = _validate(df, required_columns=["mmsi", "composite_score"])
+        result = _validate(df, required_columns=["mmsi", "confidence"])
         assert not result.ok
 
     def test_push_accepts_valid_watchlist(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DATA_DIR", str(tmp_path))
         from pipelines.distribute.push import _validate
 
-        df = pl.DataFrame({"mmsi": ["123456789"], "composite_score": [0.72]})
-        result = _validate(df, required_columns=["mmsi", "composite_score"])
+        df = pl.DataFrame({"mmsi": ["123456789"], "confidence": [0.72]})
+        result = _validate(df, required_columns=["mmsi", "confidence"])
         assert result.ok
 
     def test_local_distribute_watchlist(self, tmp_path, monkeypatch):
@@ -79,7 +79,7 @@ class TestGate2Distribute:
         # Write watchlist to maridb-public location (DATA_DIR/score/...)
         source_dir = tmp_path / "score"
         source_dir.mkdir()
-        df = pl.DataFrame({"mmsi": ["123456789"], "composite_score": [0.72]})
+        df = pl.DataFrame({"mmsi": ["123456789"], "confidence": [0.72]})
         df.write_parquet(source_dir / "singapore_watchlist.parquet")
 
         from pipelines.distribute.push import push_arktrace_watchlist

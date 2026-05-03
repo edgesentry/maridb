@@ -73,7 +73,7 @@ def push_arktrace_watchlist(region: str) -> bool:
         logger.error("Watchlist not found in maridb-public: %s", source_key)
         return False
 
-    result = _validate(df, required_columns=["mmsi", "composite_score"], min_rows=1)
+    result = _validate(df, required_columns=["mmsi", "confidence"], min_rows=1)
     if not result.ok:
         logger.warning("Watchlist (%s) failed Gate 2 — skipping: %s", region, result.errors)
         return True
