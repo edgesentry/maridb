@@ -51,3 +51,5 @@ nav:
     - Trial Specification: trial-specification.md
   - Reference:
     - Study Guide: study-guide.md
+    - Shadow Fleet OSINT Playbook: shadow-fleet-osint-playbook.md
+    - OSINT Workflow Design (LLM vs GHA): osint-workflow-design.md
