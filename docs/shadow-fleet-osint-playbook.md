@@ -139,23 +139,6 @@ To find when arktrace first scored a vessel, check the causal effects history or
 
 ---
 
-## Case study: 2026-05-03 run
-
-Top-7 vessels with `sanctions_distance=0` cross-referenced against OSINT:
-
-| MMSI | Vessel | Finding |
-|---|---|---|
-| 457133000 | PIONEER 92 (Mongolia) | OFAC EO 13902 — supported 7 Iranian STS transfers at Singapore EOPL |
-| 312171000 | ANHONA (Belize) | OFAC EO 13846 Oct 2024 — Iran petrochemicals via UAE shell co |
-| 273449240 | DOBRYNYA (Russia) | OFAC Jan 2025 — Rosnefteflot / Rosneft infrastructure |
-| 273312060 | SCF ENTERPRISE (Russia) | OFAC Jan 2025 — Sovcomflot / Sakhalin-2 |
-| 248000368 | MARIE DE LOURDES I (Malta) | OFAC EO 13726 — Libya illicit crude smuggling |
-| 400789012/400123456/400345678 | None | Unallocated MID 400 — stateless MMSI spoofing |
-
-**No direct name match with Al Jazeera April 30 vessels (Flora/Genoa/Skywave/Pola)** — those vessels likely changed names. Cross-reference by MMSI/IMO is required, not by name.
-
----
-
 ## Recommended frequency
 
 Run this playbook **weekly** to maintain a live OSINT-matched watchlist for the pitch and for Cap Vista PoC demonstration.
