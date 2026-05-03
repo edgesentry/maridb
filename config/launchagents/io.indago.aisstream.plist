@@ -4,7 +4,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>io.maridb.aisstream.persiangulf</string>
+  <string>io.indago.aisstream</string>
 
   <key>ProgramArguments</key>
   <array>
@@ -13,19 +13,13 @@
     <string>--project</string>
     <string>REPLACE_WITH_PROJECT_DIR</string>
     <string>python</string>
-    <string>-m</string>
-    <string>pipelines.ingest.ais_stream</string>
-    <string>--db</string>
-    <string>REPLACE_WITH_PROJECT_DIR/data/raw/ais/persiangulf.duckdb</string>
-    <string>--bbox</string>
-        <string>22</string>
-    <string>48</string>
-    <string>30</string>
-    <string>62</string>
-    <string>--duration</string>
-    <string>0</string>
-    <string>--flush-interval</string>
-    <string>60</string>
+    <string>REPLACE_WITH_PROJECT_DIR/scripts/ais_rotate.py</string>
+    <string>--max-slots</string>
+    <string>3</string>
+    <string>--slot-duration</string>
+    <string>3600</string>
+    <string>--data-dir</string>
+    <string>REPLACE_WITH_HOME/.indago/data/raw/ais</string>
   </array>
 
   <key>WorkingDirectory</key>
@@ -35,8 +29,6 @@
   <dict>
     <key>AISSTREAM_API_KEY</key>
     <string>REPLACE_WITH_AISSTREAM_API_KEY</string>
-    <key>DB_PATH</key>
-    <string>REPLACE_WITH_PROJECT_DIR/data/raw/ais/persiangulf.duckdb</string>
     <key>HOME</key>
     <string>REPLACE_WITH_HOME</string>
     <key>PATH</key>
@@ -53,8 +45,8 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>REPLACE_WITH_LOG_DIR/persiangulf.log</string>
+  <string>REPLACE_WITH_HOME/.indago/logs/aisstream.log</string>
   <key>StandardErrorPath</key>
-  <string>REPLACE_WITH_LOG_DIR/persiangulf.err</string>
+  <string>REPLACE_WITH_HOME/.indago/logs/aisstream.err</string>
 </dict>
 </plist>

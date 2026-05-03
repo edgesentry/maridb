@@ -4,7 +4,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>io.maridb.aisstream.japansea</string>
+  <string>io.indago.r2sync</string>
 
   <key>ProgramArguments</key>
   <array>
@@ -13,19 +13,12 @@
     <string>--project</string>
     <string>REPLACE_WITH_PROJECT_DIR</string>
     <string>python</string>
-    <string>-m</string>
-    <string>pipelines.ingest.ais_stream</string>
-    <string>--db</string>
-    <string>REPLACE_WITH_PROJECT_DIR/data/raw/ais/japansea.duckdb</string>
-    <string>--bbox</string>
-        <string>25</string>
-    <string>115</string>
-    <string>48</string>
-    <string>145</string>
-    <string>--duration</string>
-    <string>0</string>
-    <string>--flush-interval</string>
-    <string>60</string>
+    <string>REPLACE_WITH_PROJECT_DIR/scripts/sync_r2.py</string>
+    <string>push-ais-parquet</string>
+    <string>--data-dir</string>
+    <string>REPLACE_WITH_HOME/.indago/data/raw/ais</string>
+    <string>--staging-dir</string>
+    <string>REPLACE_WITH_HOME/.indago/data/staging/ais</string>
   </array>
 
   <key>WorkingDirectory</key>
@@ -33,10 +26,12 @@
 
   <key>EnvironmentVariables</key>
   <dict>
-    <key>AISSTREAM_API_KEY</key>
-    <string>REPLACE_WITH_AISSTREAM_API_KEY</string>
-    <key>DB_PATH</key>
-    <string>REPLACE_WITH_PROJECT_DIR/data/raw/ais/japansea.duckdb</string>
+    <key>AWS_ACCESS_KEY_ID</key>
+    <string>REPLACE_WITH_AWS_ACCESS_KEY_ID</string>
+    <key>AWS_SECRET_ACCESS_KEY</key>
+    <string>REPLACE_WITH_AWS_SECRET_ACCESS_KEY</string>
+    <key>S3_BUCKET</key>
+    <string>REPLACE_WITH_S3_BUCKET</string>
     <key>HOME</key>
     <string>REPLACE_WITH_HOME</string>
     <key>PATH</key>
@@ -45,16 +40,16 @@
     <string>1</string>
   </dict>
 
-  <key>KeepAlive</key>
-  <true/>
-  <key>ThrottleInterval</key>
-  <integer>30</integer>
+  <!-- Run every hour -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+
   <key>RunAtLoad</key>
   <true/>
 
   <key>StandardOutPath</key>
-  <string>REPLACE_WITH_LOG_DIR/japansea.log</string>
+  <string>REPLACE_WITH_HOME/.indago/logs/r2sync.log</string>
   <key>StandardErrorPath</key>
-  <string>REPLACE_WITH_LOG_DIR/japansea.err</string>
+  <string>REPLACE_WITH_HOME/.indago/logs/r2sync.err</string>
 </dict>
 </plist>
