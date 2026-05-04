@@ -261,6 +261,10 @@ def init_schema(db_path: str = DEFAULT_DB_PATH) -> None:
         """)
         con.execute("""
             ALTER TABLE vessel_features
+            ADD COLUMN IF NOT EXISTS imo_under_construction_flag BOOLEAN DEFAULT FALSE
+        """)
+        con.execute("""
+            ALTER TABLE vessel_features
             ADD COLUMN IF NOT EXISTS chokepoint_exit_gap_count INTEGER DEFAULT 0
         """)
         con.execute("""
