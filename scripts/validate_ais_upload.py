@@ -31,9 +31,9 @@ _ALL_REGIONS = [
     "gulfofmexico", "hornofafrica", "persiangulf", "gulfofaden", "gulfofguinea",
 ]
 _ACTIVE_REGIONS = [
-    "japansea", "singapore", "europe", "blacksea", "middleeast", "gulfofguinea",
+    "japansea", "singapore", "europe", "blacksea", "middleeast", "gulfofguinea", "hornofafrica",
 ]
-_MIN_ACTIVE_REGIONS = 5
+_MIN_ACTIVE_REGIONS = 6
 
 
 def _build_fs():
