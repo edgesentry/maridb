@@ -1007,7 +1007,7 @@ def cmd_push_ducklake_public(args: argparse.Namespace) -> int:
 
 _DUCKLAKE_AIS_CATALOG = "ducklake/catalog.duckdb"
 _DUCKLAKE_AIS_DATA = "ducklake/data"
-_AIS_DB_MIN_SIZE_BYTES = 65_536  # skip placeholder DBs smaller than 64 KB (empty schema ~12 KB)
+_AIS_DB_MIN_SIZE_BYTES = 1_048_576  # skip placeholder DBs smaller than 1 MB (empty schema ~274 KB on duckdb ≥1.x)
 _GEBCO_R2_PREFIX = "gebco-masks/"  # maridb-public sub-prefix for GEBCO depth masks
 
 
