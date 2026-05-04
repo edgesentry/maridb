@@ -37,6 +37,7 @@ DEFAULTS = {
     "ais_pre_gap_regularity": 1.0,
     "imo_type_mismatch": False,
     "imo_scrapped_flag": False,
+    "imo_under_construction_flag": False,
     "flag_changes_2y": 0,
     "name_changes_2y": 0,
     "owner_changes_2y": 0,
