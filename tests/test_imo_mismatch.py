@@ -184,7 +184,7 @@ def test_imo_unknown_category_not_flagged(tmp_db):
 
 
 def test_imo_no_equasis_ref_returns_false_defaults(tmp_db):
-    """When equasis_vessel_ref is empty, both features default to False."""
+    """When equasis_vessel_ref is empty, all three features default to False."""
     _seed_vessel_meta(tmp_db, [{"mmsi": "555555555", "imo": "9000005", "ship_type": 80}])
 
     result = compute_imo_mismatch_features(tmp_db)
@@ -192,6 +192,7 @@ def test_imo_no_equasis_ref_returns_false_defaults(tmp_db):
     assert not row.is_empty()
     assert row["imo_type_mismatch"][0] is False
     assert row["imo_scrapped_flag"][0] is False
+    assert row["imo_under_construction_flag"][0] is False
 
 
 def test_imo_mismatch_empty_db_returns_correct_schema(tmp_db):
@@ -199,3 +200,48 @@ def test_imo_mismatch_empty_db_returns_correct_schema(tmp_db):
     assert "mmsi" in result.columns
     assert "imo_type_mismatch" in result.columns
     assert "imo_scrapped_flag" in result.columns
+    assert "imo_under_construction_flag" in result.columns
+
+
+# ---------------------------------------------------------------------------
+# imo_under_construction_flag
+# ---------------------------------------------------------------------------
+
+
+def test_imo_under_construction_flag_detected(tmp_db):
+    """Vessel's IMO has build_year in the future → construction IMO hijacking."""
+    import datetime
+    future_year = datetime.date.today().year + 1
+    _seed_vessel_meta(tmp_db, [{"mmsi": "666666666", "imo": "9000006", "ship_type": 80}])
+    _seed_equasis_ref(tmp_db, [{"imo": "9000006", "vessel_type": 80, "build_year": future_year}])
+
+    result = compute_imo_mismatch_features(tmp_db)
+    row = result.filter(pl.col("mmsi") == "666666666")
+    assert not row.is_empty()
+    assert row["imo_under_construction_flag"][0] is True
+    assert row["imo_type_mismatch"][0] is False
+    assert row["imo_scrapped_flag"][0] is False
+
+
+def test_imo_under_construction_not_flagged_for_past_build_year(tmp_db):
+    """Vessel with build_year in the past is not flagged."""
+    import datetime
+    past_year = datetime.date.today().year - 1
+    _seed_vessel_meta(tmp_db, [{"mmsi": "777777777", "imo": "9000007", "ship_type": 80}])
+    _seed_equasis_ref(tmp_db, [{"imo": "9000007", "vessel_type": 80, "build_year": past_year}])
+
+    result = compute_imo_mismatch_features(tmp_db)
+    row = result.filter(pl.col("mmsi") == "777777777")
+    assert not row.is_empty()
+    assert row["imo_under_construction_flag"][0] is False
+
+
+def test_imo_under_construction_null_build_year_not_flagged(tmp_db):
+    """NULL build_year does not trigger the flag."""
+    _seed_vessel_meta(tmp_db, [{"mmsi": "888888888", "imo": "9000008", "ship_type": 80}])
+    _seed_equasis_ref(tmp_db, [{"imo": "9000008", "vessel_type": 80, "build_year": None}])
+
+    result = compute_imo_mismatch_features(tmp_db)
+    row = result.filter(pl.col("mmsi") == "888888888")
+    assert not row.is_empty()
+    assert row["imo_under_construction_flag"][0] is False

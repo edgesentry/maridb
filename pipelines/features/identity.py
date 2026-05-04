@@ -200,26 +200,35 @@ def _ship_type_category(ship_type: int | None) -> int:
 
 
 def compute_imo_mismatch_features(db_path: str = DEFAULT_DB_PATH) -> pl.DataFrame:
-    """imo_type_mismatch and imo_scrapped_flag per MMSI.
+    """IMO identity spoofing features per MMSI.
 
     Joins vessel_meta (AIS-reported ship_type + imo) against equasis_vessel_ref
-    (registered vessel_type and scrapped status from Equasis CSV).
+    (registered vessel_type, build_year, and scrapped status from Equasis CSV).
 
     imo_type_mismatch — True when the AIS-reported ship type category (cargo,
     tanker, passenger, fishing …) differs from the category registered for the
-    same IMO number in Equasis.  A 2005-built VLCC (Equasis: tanker) cannot be
-    a 2018-built chemical tanker (AIS: cargo).
+    same IMO number in Equasis.
 
     imo_scrapped_flag — True when the vessel's IMO number is marked as scrapped
     or deleted in the Equasis reference data.
 
-    Returns a DataFrame with (mmsi, imo_type_mismatch, imo_scrapped_flag).
-    If equasis_vessel_ref is empty, both features are False for all vessels.
+    imo_under_construction_flag — True when build_year > current year, meaning
+    the IMO belongs to a vessel not yet launched.  Broadcasting such an IMO is
+    unambiguous identity fraud (construction IMO hijacking).
+
+    Returns a DataFrame with
+    (mmsi, imo_type_mismatch, imo_scrapped_flag, imo_under_construction_flag).
+    If equasis_vessel_ref is empty, all three features are False for all vessels.
     """
+    import datetime
+
+    current_year = datetime.date.today().year
+
     _empty_schema = {
         "mmsi": pl.Utf8,
         "imo_type_mismatch": pl.Boolean,
         "imo_scrapped_flag": pl.Boolean,
+        "imo_under_construction_flag": pl.Boolean,
     }
 
     con = duckdb.connect(db_path, read_only=True)
@@ -236,9 +245,12 @@ def compute_imo_mismatch_features(db_path: str = DEFAULT_DB_PATH) -> pl.DataFram
                 [
                     pl.lit(False).alias("imo_type_mismatch"),
                     pl.lit(False).alias("imo_scrapped_flag"),
+                    pl.lit(False).alias("imo_under_construction_flag"),
                 ]
             )
-        ref = con.execute("SELECT imo, vessel_type, scrapped FROM equasis_vessel_ref").pl()
+        ref = con.execute(
+            "SELECT imo, vessel_type, build_year, scrapped FROM equasis_vessel_ref"
+        ).pl()
     finally:
         con.close()
 
@@ -253,11 +265,14 @@ def compute_imo_mismatch_features(db_path: str = DEFAULT_DB_PATH) -> pl.DataFram
         eq_cat = _ship_type_category(row.get("vessel_type"))
         mismatch = ais_cat != 0 and eq_cat != 0 and ais_cat != eq_cat
         scrapped = bool(row.get("scrapped") or False)
+        build_year = row.get("build_year")
+        under_construction = bool(build_year is not None and build_year > current_year)
         rows.append(
             {
                 "mmsi": row["mmsi"],
                 "imo_type_mismatch": mismatch,
                 "imo_scrapped_flag": scrapped,
+                "imo_under_construction_flag": under_construction,
             }
         )
 
@@ -272,6 +287,7 @@ def compute_imo_mismatch_features(db_path: str = DEFAULT_DB_PATH) -> pl.DataFram
         [
             pl.col("imo_type_mismatch").fill_null(False),
             pl.col("imo_scrapped_flag").fill_null(False),
+            pl.col("imo_under_construction_flag").fill_null(False),
         ]
     )
 
@@ -329,6 +345,7 @@ def compute_identity_features(db_path: str = DEFAULT_DB_PATH) -> pl.DataFrame:
                 pl.col("ownership_depth").fill_null(0).cast(pl.Int32),
                 pl.col("imo_type_mismatch").fill_null(False),
                 pl.col("imo_scrapped_flag").fill_null(False),
+                pl.col("imo_under_construction_flag").fill_null(False),
             ]
         )
         .collect()
