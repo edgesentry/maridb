@@ -21,32 +21,49 @@ theme:
   features:
     - navigation.sections
     - navigation.top
+    - navigation.tracking
     - search.highlight
     - content.action.edit
+    - content.code.copy
+
+plugins:
+  - search
+
+markdown_extensions:
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - tables
+  - admonition
 
 nav:
   - Home: index.md
   - Design:
-    - Analytics Overview: analytics-overview.md
-    - Feature Engineering: feature-engineering.md
-    - Scoring Model: scoring-model.md
-    - Triage Governance: triage-governance.md
-    - Field Investigation: field-investigation.md
-    - Causal Analysis: causal-analysis.md
+    - Analytics Overview: ref-analytics-overview.md
+    - Feature Engineering: ref-feature-engineering.md
+    - Scoring Model: ref-scoring-model.md
+    - Causal Analysis: ref-causal-analysis.md
+    - Field Investigation: ref-field-investigation.md
+    - Triage Governance: ref-triage-governance.md
   - Operations:
-    - Pipeline (indago): pipeline.md
-    - Pipeline Catalog: pipeline-catalog.md
-    - Pipeline Operations: pipeline-operations.md
-    - Regional Playbooks: regional-playbooks.md
-    - R2 Buckets: r2-buckets.md
-    - R2 Data Layout: r2-data-layout.md
+    - Pipeline Overview: ref-pipeline.md
+    - Pipeline Catalog: ref-pipeline-catalog.md
+    - Regional Playbooks: ref-regional-playbooks.md
+    - R2 Buckets: ref-r2-buckets.md
+    - R2 Data Layout: ref-r2-data-layout.md
   - Validation:
-    - Backtesting Validation: backtesting-validation.md
-    - Evaluation Metrics: evaluation-metrics.md
-    - Precision Improvement Plan: precision-improvement-plan.md
-    - Pre-Label Governance: prelabel-governance.md
-    - Backtracking Runbook: backtracking-runbook.md
+    - Backtesting: ref-backtesting.md
+    - Evaluation Metrics: ref-evaluation-metrics.md
+    - Precision Plan: ref-precision-plan.md
+    - Pre-Label Governance: ref-prelabel-governance.md
   - Reference:
-    - Study Guide: study-guide.md
-    - Shadow Fleet OSINT Playbook: shadow-fleet-osint-playbook.md
-    - OSINT Workflow Design (LLM vs GHA): osint-workflow-design.md
+    - OSINT Workflow: ref-osint-workflow.md
+    - Study Guide: ref-study-guide.md
+  - Roadmap:
+    - Overview: roadmap/index.md
+  - Related:
+    - arktrace: https://github.com/edgesentry/arktrace
+    - documaris: https://github.com/edgesentry/documaris
+    - clarus: https://github.com/edgesentry/clarus
+    - edgesentry-rs: https://github.com/edgesentry/edgesentry-rs

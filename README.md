@@ -36,17 +36,19 @@ Each domain produces Parquet partitions in R2, consumed by downstream products w
 
 All buckets: unauthenticated public read.
 
-See [`docs/r2-buckets.md`](docs/r2-buckets.md) for full partition layout and data flow.
+See [`docs/ref-r2-buckets.md`](docs/ref-r2-buckets.md) for full partition layout and data flow.
 
 ## Repository layout
 
 ```
 indago/
-  docs/
-    r2-buckets.md      # bucket architecture, partition layout, data flow
+  .agents/skills/      # agent skills (npx skills add edgesentry/indago)
+  docs/                # reference material (ref-*.md)
   pipelines/           # ingest and transformation pipeline implementations
   scripts/             # one-off upload and maintenance scripts
   config/              # pipeline configuration (sources, schedules, thresholds)
+  AGENTS.md            # agent-facing guide (directory map, R2 buckets, skills)
+  CONTRIBUTING.md      # scope, layering, documentation rules
   wrangler.toml        # R2 bucket bindings
 ```
 
