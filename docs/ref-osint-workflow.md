@@ -248,7 +248,7 @@ This workflow is designed for:
 
 ## References
 
-- [Shadow Fleet OSINT Playbook](shadow-fleet-osint-playbook.md) — manual procedure this automates
+- [Shadow Fleet OSINT Playbook](https://github.com/edgesentry/indago/blob/main/.agents/skills/indago-run-osint/references/osint-playbook.md) — manual procedure this automates
 - [arktrace investigation test cases](https://edgesentry.github.io/arktrace/investigation-test-cases/) — analyst LLM workflow including news-triggered cases
 - [arktrace#550](https://github.com/edgesentry/arktrace/issues/550) — GitHub Actions implementation
 - [arktrace#551](https://github.com/edgesentry/arktrace/issues/551) — Local LLM implementation

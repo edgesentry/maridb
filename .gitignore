@@ -14,3 +14,4 @@ node_modules/
 .wrangler/
 dist/
 site/
+uv.lock

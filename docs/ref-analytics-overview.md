@@ -119,4 +119,4 @@ Daily GDELT event rows are embedded and stored in a local LanceDB vector store. 
 8. GDELT ingestion
 9. Dashboard launch
 
-See [Pipeline Operations](pipeline-operations.md) for per-region configuration and [Regional Playbooks](regional-playbooks.md) for analyst-persona-specific guidance.
+See [Pipeline Operations](https://github.com/edgesentry/indago/blob/main/.agents/skills/indago-run-pipeline/references/pipeline-operations.md) for per-region configuration and [Regional Playbooks](ref-regional-playbooks.md) for analyst-persona-specific guidance.
