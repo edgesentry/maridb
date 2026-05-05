@@ -27,4 +27,4 @@ uv run python scripts/validate_ais_upload.py
 | `arktrace-public` | Detection-ready features, watchlist, SHAP signals |
 | `documaris-public` | Regulatory KB, form templates, voyage evidence |
 
-R2 bindings are defined in `wrangler.toml`. See [docs/ref-r2-buckets.md](../../docs/ref-r2-buckets.md) for full partition layout.
+R2 bindings are defined in `wrangler.toml`. See [docs/ref-r2-buckets.md](../../../docs/ref-r2-buckets.md) for full partition layout.
