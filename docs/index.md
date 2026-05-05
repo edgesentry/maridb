@@ -6,6 +6,24 @@
 
 indago is the shared data foundation for the edgesentry product stack. It collects and transforms raw signals from multiple OSINT domains into structured Parquet datasets distributed via Cloudflare R2.
 
+## 11-step pipeline (Full Screening)
+
+```
+A1  load_ais          Raw AIS NMEA → DuckDB vessel tracks
+A2  ingest_schema     Vessel registry — IMO, flag, GT, owner
+A3  ingest_sanctions  OFAC / UN / EU / MAS → sanctions distance
+A4  ingest_corporate  Beneficial ownership graph → UBO chains
+A5  ingest_trade      Cargo manifests → HS codes, DG flags
+A6  ingest_eo         EO/SAR detections → optical/dark vessel flags
+A7  features          27 features across 6 families → feature matrix
+A8  score_baseline    HDBSCAN clustering → MPOL baseline score
+A9  score_anomaly     Isolation Forest → anomaly delta
+A10 score_composite   C3 causal calibration → final risk score
+A11 distribute        Parquet → R2 (maridb-public / arktrace-public / documaris-public)
+```
+
+Runs daily via GitHub Actions across 5 regions. See [`/indago-run-pipeline`](https://github.com/edgesentry/indago/blob/main/.agents/skills/indago-run-pipeline/SKILL.md) to run locally.
+
 ## Design
 
 - [ref-analytics-overview.md](ref-analytics-overview.md) — end-to-end pipeline data flow

@@ -31,11 +31,11 @@ Multi-domain OSINT data layer. indago ingests raw signals from maritime, corpora
 
 ## R2 buckets
 
-| Bucket | Written by | Read by |
-|--------|-----------|---------|
-| `maridb-public` | indago | clarus, arktrace (AIS/vessel features) |
-| `arktrace-public` | indago | arktrace (detection-ready features, watchlist) |
-| `documaris-public` | indago | documaris (voyage evidence, regulatory KB) |
+| Bucket | Written by | Read by | Note |
+|--------|-----------|---------|------|
+| `maridb-public` | indago | clarus, arktrace (AIS/vessel features) | Legacy name — predates the maridb → indago rename; bucket name is fixed in Cloudflare |
+| `arktrace-public` | indago | arktrace (detection-ready features, watchlist) | |
+| `documaris-public` | indago | documaris (voyage evidence, regulatory KB) | |
 
 All buckets: unauthenticated public read. See [docs/ref-r2-buckets.md](docs/ref-r2-buckets.md) for partition layout.
 

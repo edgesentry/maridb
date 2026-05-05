@@ -60,6 +60,8 @@ nav:
   - Reference:
     - OSINT Workflow: ref-osint-workflow.md
     - Study Guide: ref-study-guide.md
+  - Roadmap:
+    - Overview: roadmap/index.md
   - Related:
     - arktrace: https://github.com/edgesentry/arktrace
     - documaris: https://github.com/edgesentry/documaris
