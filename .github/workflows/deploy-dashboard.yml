@@ -1,0 +1,31 @@
+name: Deploy metrics dashboard to Cloudflare Pages
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "dashboard/**"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy indago-metrics → indago-metrics.pages.dev
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Deploy to Cloudflare Pages
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=format:'%s' | LC_ALL=C tr -cd '[:print:]' | cut -c1-72)
+          npx wrangler pages deploy dashboard \
+            --project-name=indago-metrics \
+            --branch=main \
+            --commit-dirty=true \
+            --commit-message="${COMMIT_MSG}"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
