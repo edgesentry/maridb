@@ -186,7 +186,10 @@ def main() -> None:
                 _delete_key(fs, bucket, key)
                 print(f"Deleted old snapshot: {key}")
         except ValueError:
-            pass
+            print(
+                f"[warn] Skipping invalid index entry (expected YYYYMMDD): {entry!r}",
+                file=sys.stderr,
+            )
 
 
 if __name__ == "__main__":
