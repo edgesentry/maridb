@@ -146,10 +146,12 @@ def _load_watchlist(paths: list[Path]) -> pl.DataFrame:
     if not parts:
         return pl.DataFrame()
     combined = pl.concat(parts, how="vertical_relaxed")
-    # Deduplicate keeping highest confidence per mmsi, then add rank
+    # Deduplicate keeping highest confidence per mmsi, then add rank.
+    # Re-sort after unique: polars does not guarantee order preservation.
     return (
         combined.sort("confidence", descending=True)
         .unique(subset=["mmsi"], keep="first")
+        .sort("confidence", descending=True)
         .with_row_index("watchlist_rank", offset=1)
     )
 
