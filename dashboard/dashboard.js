@@ -10,9 +10,11 @@
 
 import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6/+esm";
 
-const R2_BASE = "https://pub-e088008b61ee432b906ef710d52af28c.r2.dev";
+// ?local=1 serves from ./metrics/ (for local dev — run dev-serve.sh)
+const LOCAL_MODE = new URLSearchParams(location.search).has("local");
+const R2_BASE = LOCAL_MODE ? "." : "https://pub-e088008b61ee432b906ef710d52af28c.r2.dev";
 const INDEX_URL = `${R2_BASE}/metrics/index.json`;
-const OPFS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const OPFS_CACHE_TTL_MS = LOCAL_MODE ? 0 : 24 * 60 * 60 * 1000; // skip cache in local mode
 
 // ---------------------------------------------------------------------------
 // OPFS helpers
