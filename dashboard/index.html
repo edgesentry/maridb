@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>indago — Metrics Dashboard</title>
+  <script type="module" src="dashboard.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 2rem;
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid #21262d;
+      padding-bottom: 1rem;
+    }
+
+    header h1 { font-size: 1.2rem; font-weight: 600; color: #e6edf3; }
+    header span { font-size: 0.8rem; color: #8b949e; }
+
+    #status {
+      font-size: 0.75rem;
+      color: #8b949e;
+      margin-bottom: 1.5rem;
+      min-height: 1.2em;
+    }
+    #status.error { color: #f85149; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 1rem 1.25rem 1.25rem;
+    }
+
+    .card h2 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.5rem;
+    }
+
+    .metric-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #e6edf3;
+      letter-spacing: -0.02em;
+    }
+
+    .metric-sub {
+      font-size: 0.75rem;
+      color: #8b949e;
+      margin-top: 0.15rem;
+    }
+
+    .chart-container {
+      margin-top: 0.75rem;
+      min-height: 120px;
+    }
+
+    /* Observable Plot overrides for dark theme */
+    .chart-container svg text { fill: #8b949e !important; }
+    .chart-container svg [aria-label="y-axis tick"] line,
+    .chart-container svg [aria-label="x-axis tick"] line { stroke: #21262d; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      margin-top: 0.5rem;
+    }
+    th {
+      text-align: left;
+      font-weight: 600;
+      color: #8b949e;
+      border-bottom: 1px solid #21262d;
+      padding: 0.3rem 0.5rem;
+    }
+    td {
+      padding: 0.3rem 0.5rem;
+      border-bottom: 1px solid #161b22;
+      color: #c9d1d9;
+    }
+    td.good { color: #3fb950; }
+    td.warn { color: #d29922; }
+    td.bad  { color: #f85149; }
+
+    footer {
+      font-size: 0.7rem;
+      color: #484f58;
+      margin-top: 2rem;
+      border-top: 1px solid #21262d;
+      padding-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>indago — Metrics Dashboard</h1>
+    <span>Last 7 days · R2 + OPFS · zero cloud compute</span>
+  </header>
+
+  <div id="status">Loading…</div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Precision @ 50</h2>
+      <div class="metric-value" id="val-p50">—</div>
+      <div class="metric-sub" id="sub-p50">gate ≥ 0.60 · ceiling 0.95</div>
+      <div class="chart-container" id="chart-p50"></div>
+    </div>
+
+    <div class="card">
+      <h2>Recall @ 200</h2>
+      <div class="metric-value" id="val-recall">—</div>
+      <div class="metric-sub">all known positives reachable in top 200</div>
+      <div class="chart-container" id="chart-recall"></div>
+    </div>
+
+    <div class="card">
+      <h2>Pre-designation Lead Time</h2>
+      <div class="metric-value" id="val-lead">—</div>
+      <div class="metric-sub" id="sub-lead">days · 60–90 day target</div>
+      <div class="chart-container" id="chart-lead"></div>
+    </div>
+
+    <div class="card">
+      <h2>Unknown-Unknown Watch</h2>
+      <div class="metric-value" id="val-uu">—</div>
+      <div class="metric-sub">candidates with no current sanctions link</div>
+      <div class="chart-container" id="chart-uu"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom: 1.5rem;">
+    <h2>Daily Snapshot History</h2>
+    <table id="history-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>P@50</th>
+          <th>Recall@200</th>
+          <th>Lead days (median)</th>
+          <th>UU candidates</th>
+          <th>Known positives</th>
+          <th>Source</th>
+        </tr>
+      </thead>
+      <tbody id="history-body">
+        <tr><td colspan="7" style="color:#484f58">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer id="footer">Cache: OPFS · Data: maridb-public R2</footer>
+</body>
+</html>
