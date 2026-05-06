@@ -10,17 +10,21 @@
 
 import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6/+esm";
 
-// ?local=1 serves from ./metrics/ (for local dev — run dev-serve.sh)
-const LOCAL_MODE = new URLSearchParams(location.search).has("local");
+// ?local serves from ./metrics/ (for local dev — run dev-serve.sh)
+// ?refresh clears OPFS cache and re-fetches from R2
+const _params = new URLSearchParams(location.search);
+const LOCAL_MODE = _params.get("local") === "1" || _params.get("local") === "true";
+const FORCE_REFRESH = _params.has("refresh");
 const R2_BASE = LOCAL_MODE ? "." : "https://pub-e088008b61ee432b906ef710d52af28c.r2.dev";
 const INDEX_URL = `${R2_BASE}/metrics/index.json`;
-const OPFS_CACHE_TTL_MS = LOCAL_MODE ? 0 : 24 * 60 * 60 * 1000; // skip cache in local mode
+const OPFS_CACHE_TTL_MS = LOCAL_MODE ? 0 : 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // OPFS helpers
 // ---------------------------------------------------------------------------
 
 async function opfsGet(key) {
+  if (FORCE_REFRESH) return null;
   try {
     const root = await navigator.storage.getDirectory();
     const dir = await root.getDirectoryHandle("indago-metrics", { create: true });
