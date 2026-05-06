@@ -287,7 +287,7 @@ jobs:
       - name: Lead time validation (#268)
         run: |
           uv run python scripts/validate_lead_time_ofac.py \
-            --all-regions \
+            --watchlist "${MARIDB_DATA_DIR:-data/processed}/candidate_watchlist.parquet" \
             --out data/processed/lead_time_report.json
 
       - name: Push metrics snapshot to R2 (#104)
