@@ -146,8 +146,12 @@ def _load_watchlist(paths: list[Path]) -> pl.DataFrame:
     if not parts:
         return pl.DataFrame()
     combined = pl.concat(parts, how="vertical_relaxed")
-    # Deduplicate keeping highest confidence per mmsi
-    return combined.sort("confidence", descending=True).unique(subset=["mmsi"], keep="first")
+    # Deduplicate keeping highest confidence per mmsi, then add rank
+    return (
+        combined.sort("confidence", descending=True)
+        .unique(subset=["mmsi"], keep="first")
+        .with_row_index("watchlist_rank", offset=1)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +201,10 @@ def _retrospective(
                 "mmsi": mmsi,
                 "vessel_name": row.get("vessel_name") or mmsi,
                 "flag": row.get("flag") or "",
+                "watchlist_rank": int(row.get("watchlist_rank") or 0),
                 "confidence": round(confidence, 4),
+                "behavioral_deviation_score": round(float(row.get("behavioral_deviation_score") or 0), 4),
+                "graph_risk_score": round(float(row.get("graph_risk_score") or 0), 4),
                 "ais_gap_count_30d": int(row.get("ais_gap_count_30d") or 0),
                 "sanctions_distance": int(row.get("sanctions_distance") or 99),
                 "designation_date_proxy": desig_date.strftime("%Y-%m-%d"),
