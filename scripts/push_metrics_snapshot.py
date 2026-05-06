@@ -128,8 +128,9 @@ def _write_json(fs, bucket: str, key: str, obj: dict) -> None:
 def _delete_key(fs, bucket: str, key: str) -> None:
     try:
         fs.delete_file(f"{bucket}/{key}")
-    except Exception:
-        pass
+    except Exception as exc:
+        # Best-effort cleanup: deletion failures should not fail snapshot publishing.
+        print(f"warning: failed to delete {bucket}/{key}: {exc}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
