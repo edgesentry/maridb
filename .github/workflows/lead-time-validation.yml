@@ -27,25 +27,32 @@ jobs:
         run: uv sync
 
       - name: Pull watchlist and sanctions DB from R2
+        id: pull
+        continue-on-error: true
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          uv run python scripts/sync_r2.py pull
-          uv run python scripts/sync_r2.py pull-sanctions-db
+          uv run python scripts/sync_r2.py pull \
+            || { echo "::warning::pull skipped — no latest pointer in R2 (run a push first)"; exit 1; }
+          uv run python scripts/sync_r2.py pull-sanctions-db \
+            || echo "::warning::pull-sanctions-db skipped or failed (non-fatal)"
 
       - name: Run lead time validation
+        if: steps.pull.outcome == 'success'
         run: |
           uv run python scripts/validate_lead_time_ofac.py \
             --watchlist ~/.indago/data/candidate_watchlist.parquet \
             --out data/processed/lead_time_report.json
 
       - name: Print formatted report
+        if: steps.pull.outcome == 'success'
         run: |
           uv run python scripts/print_lead_time_report.py \
             --report data/processed/lead_time_report.json
 
       - name: Upload report artifact
+        if: steps.pull.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: lead-time-report-${{ github.run_id }}
