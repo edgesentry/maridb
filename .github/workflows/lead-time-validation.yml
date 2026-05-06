@@ -1,8 +1,10 @@
 name: Lead Time Validation
 
 on:
-  schedule:
-    - cron: '0 1 * * 2'   # 01:00 UTC every Tuesday (09:00 SGT) — after weekly data-publish
+  workflow_run:
+    workflows: ["Publish data to R2"]
+    branches: ["main"]
+    types: [completed]
   workflow_dispatch:
 
 permissions: {}
@@ -11,6 +13,9 @@ jobs:
   validate:
     name: Validate pre-designation lead time & notify
     runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: read
 
