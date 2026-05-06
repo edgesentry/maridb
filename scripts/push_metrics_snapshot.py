@@ -92,42 +92,42 @@ def _collect_snapshot(date_str: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# R2 helpers
+# R2 helpers — use boto3 for simple PUT (pyarrow triggers multipart upload
+# even for tiny files, which fails with TLS handshake errors on some runners)
 # ---------------------------------------------------------------------------
 
-def _make_fs():
-    import pyarrow.fs as pafs
+def _make_client(bucket: str):
+    import boto3
 
-    endpoint = _DEFAULT_ENDPOINT
-    host = endpoint.split("://", 1)[-1].rstrip("/")
-    scheme = "https" if endpoint.startswith("https://") else "http"
-    return pafs.S3FileSystem(
-        access_key=os.environ["AWS_ACCESS_KEY_ID"],
-        secret_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-        endpoint_override=host,
-        scheme=scheme,
-        region=os.getenv("AWS_REGION", "auto"),
-    )
+    return boto3.client(
+        "s3",
+        endpoint_url=_DEFAULT_ENDPOINT,
+        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+        region_name=os.getenv("AWS_REGION", "auto"),
+    ), bucket
 
 
-def _read_index(fs, bucket: str) -> list[str]:
+def _read_index(client_bucket: tuple, _unused_bucket: str) -> list[str]:
+    client, bucket = client_bucket
     try:
-        with fs.open_input_stream(f"{bucket}/{_INDEX_KEY}") as f:
-            data = json.loads(f.read().decode())
-            return data.get("entries", [])
+        obj = client.get_object(Bucket=bucket, Key=_INDEX_KEY)
+        data = json.loads(obj["Body"].read().decode())
+        return data.get("entries", [])
     except Exception:
         return []
 
 
-def _write_json(fs, bucket: str, key: str, obj: dict) -> None:
+def _write_json(client_bucket: tuple, _unused_bucket: str, key: str, obj: dict) -> None:
+    client, bucket = client_bucket
     payload = json.dumps(obj, indent=2).encode()
-    with fs.open_output_stream(f"{bucket}/{key}") as f:
-        f.write(payload)
+    client.put_object(Bucket=bucket, Key=key, Body=payload, ContentType="application/json")
 
 
-def _delete_key(fs, bucket: str, key: str) -> None:
+def _delete_key(client_bucket: tuple, _unused_bucket: str, key: str) -> None:
+    client, bucket = client_bucket
     try:
-        fs.delete_file(f"{bucket}/{key}")
+        client.delete_object(Bucket=bucket, Key=key)
     except Exception as exc:
         # Best-effort cleanup: deletion failures should not fail snapshot publishing.
         print(f"warning: failed to delete {bucket}/{key}: {exc}", file=sys.stderr)
@@ -161,19 +161,19 @@ def main() -> None:
             sys.exit(1)
 
     bucket = os.getenv("S3_BUCKET", _DEFAULT_BUCKET)
-    fs = _make_fs()
+    cb = _make_client(bucket)
 
     # Write today's snapshot
-    _write_json(fs, bucket, snapshot_key, snap)
+    _write_json(cb, bucket, snapshot_key, snap)
     print(f"Uploaded: {snapshot_key}")
 
     # Update index (newest first, max 7 entries)
-    entries = _read_index(fs, bucket)
+    entries = _read_index(cb, bucket)
     if date_key not in entries:
         entries = [date_key] + entries
     entries = entries[:_MAX_HISTORY]
 
-    _write_json(fs, bucket, _INDEX_KEY, {"entries": entries, "updated_at_utc": datetime.now(UTC).isoformat()})
+    _write_json(cb, bucket, _INDEX_KEY, {"entries": entries, "updated_at_utc": datetime.now(UTC).isoformat()})
     print(f"Updated index: {entries}")
 
     # Delete entries beyond the 7-day window
@@ -183,7 +183,7 @@ def main() -> None:
             entry_date = datetime.strptime(entry, "%Y%m%d").replace(tzinfo=UTC)
             if entry_date < cutoff:
                 key = f"{_METRICS_PREFIX}/{entry}.json"
-                _delete_key(fs, bucket, key)
+                _delete_key(cb, bucket, key)
                 print(f"Deleted old snapshot: {key}")
         except ValueError:
             print(
