@@ -9,7 +9,7 @@ on:
 
 jobs:
   deploy:
-    name: Deploy indago-metrics → indago-metrics.pages.dev
+    name: Deploy dashboard → indago-4oy.pages.dev
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -22,7 +22,7 @@ jobs:
         run: |
           COMMIT_MSG=$(git log -1 --pretty=format:'%s' | LC_ALL=C tr -cd '[:print:]' | cut -c1-72)
           npx wrangler pages deploy dashboard \
-            --project-name=indago-metrics \
+            --project-name=indago \
             --branch=main \
             --commit-dirty=true \
             --commit-message="${COMMIT_MSG}"
