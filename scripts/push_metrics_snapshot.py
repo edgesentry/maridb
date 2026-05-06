@@ -35,7 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 _DEFAULT_BUCKET = "maridb-public"
 _DEFAULT_ENDPOINT = os.getenv(
     "S3_ENDPOINT",
-    "https://4d28b4cbebe4bcbc11d45e99fda3a44c.r2.cloudflarestorage.com",
+    "https://b8a0b09feb89390fb6e8cf4ef9294f48.r2.cloudflarestorage.com",
 )
 _METRICS_PREFIX = "metrics"
 _INDEX_KEY = f"{_METRICS_PREFIX}/index.json"
