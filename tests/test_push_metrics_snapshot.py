@@ -196,15 +196,19 @@ def test_delete_key_ignores_errors(capsys):
 
 
 def test_make_client_uses_env_credentials(monkeypatch):
-    boto3 = pytest.importorskip("boto3")
+    """_make_client passes credentials to boto3.client — mocked to run without boto3 installed."""
+    import sys
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test-key")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test-secret")
     monkeypatch.setenv("AWS_REGION", "auto")
-    with patch("boto3.client") as mock_boto3:
-        mock_boto3.return_value = MagicMock()
-        cb, bucket = _make_client("maridb-public")
-        mock_boto3.assert_called_once()
-        kwargs = mock_boto3.call_args.kwargs
-        assert kwargs["aws_access_key_id"] == "test-key"
-        assert kwargs["aws_secret_access_key"] == "test-secret"
-        assert bucket == "maridb-public"
+
+    mock_boto3 = MagicMock()
+    monkeypatch.setitem(sys.modules, "boto3", mock_boto3)
+
+    cb, bucket = _make_client("maridb-public")
+
+    mock_boto3.client.assert_called_once()
+    kwargs = mock_boto3.client.call_args.kwargs
+    assert kwargs["aws_access_key_id"] == "test-key"
+    assert kwargs["aws_secret_access_key"] == "test-secret"
+    assert bucket == "maridb-public"
