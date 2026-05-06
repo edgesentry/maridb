@@ -24,7 +24,6 @@ from scripts.validate_lead_time_ofac import (
 # ---------------------------------------------------------------------------
 
 _NOW = datetime(2026, 5, 6, 0, 0, 0, tzinfo=UTC)
-_LAST_SEEN_PRE = _NOW - timedelta(days=5)  # last seen 5 days ago → window_start = 35 days ago → lead = 25d
 
 
 def _make_watchlist(path: Path, rows: list[dict]) -> Path:
