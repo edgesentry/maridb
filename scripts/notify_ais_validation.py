@@ -74,7 +74,7 @@ def main() -> int:
     )
 
     status_icon = "✅" if overall_pass else "❌"
-    subject = f"{status_icon} maridb AIS validation — {target_date} ({'PASS' if overall_pass else 'FAIL'})"
+    subject = f"{status_icon} indago AIS validation — {target_date} ({'PASS' if overall_pass else 'FAIL'})"
 
     region_rows = ""
     for r in most_recent_day.get("region_results", []):
@@ -94,7 +94,7 @@ def main() -> int:
         </tr>"""
 
     html = f"""<html><body style="font-family:sans-serif;max-width:760px">
-<h2>maridb — Daily AIS Upload Validation</h2>
+<h2>indago — Daily AIS Upload Validation</h2>
 <p><strong>Date:</strong> {target_date}<br>
 <strong>Overall:</strong> {status_icon} {'PASS' if overall_pass else 'FAIL'}<br>
 <strong>Active regions passing:</strong> {len(active_passing)}/{coverage.get('required', 5)}

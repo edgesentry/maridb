@@ -74,16 +74,16 @@ def _format_body(
 
     if regression:
         subject = (
-            f"⚠️ arktrace data publish — Precision@50 regression ({p50:.4f} ↓ from {prev_p50:.4f})"
+            f"⚠️ indago data publish — Precision@50 regression ({p50:.4f} ↓ from {prev_p50:.4f})"
         )
         status_banner = f'<p style="color:#c0392b;font-weight:bold">⚠️ Regression detected: Precision@50 dropped {prev_p50 - p50:.4f} vs previous run</p>'
     elif improvement:
         subject = (
-            f"✅ arktrace data publish — Precision@50 improved ({p50:.4f} ↑ from {prev_p50:.4f})"
+            f"✅ indago data publish — Precision@50 improved ({p50:.4f} ↑ from {prev_p50:.4f})"
         )
         status_banner = f'<p style="color:#27ae60;font-weight:bold">✅ Improvement: Precision@50 up {p50 - prev_p50:.4f} vs previous run</p>'
     else:
-        subject = f"arktrace data publish — Precision@50 {p50:.4f} ({generated_at})"
+        subject = f"indago data publish — Precision@50 {p50:.4f} ({generated_at})"
         status_banner = ""
 
     ci_str = f" (CI 95%: {p50_lo:.4f}–{p50_hi:.4f})" if p50_lo and p50_hi else ""
@@ -108,7 +108,7 @@ def _format_body(
 
     html = f"""
 <html><body style="font-family:sans-serif;max-width:600px">
-<h2>arktrace — Data Publish Summary</h2>
+<h2>indago — Data Publish Summary</h2>
 {status_banner}
 {skipped_note}
 <p><strong>Date:</strong> {generated_at}<br>
@@ -155,7 +155,7 @@ def main() -> int:
     prev_p50 = float(prev_p50_str) if prev_p50_str else None
 
     run_id = os.getenv("GITHUB_RUN_ID", "")
-    repo = os.getenv("GITHUB_REPOSITORY", "edgesentry/arktrace")
+    repo = os.getenv("GITHUB_REPOSITORY", "edgesentry/indago")
     run_url = (
         f"https://github.com/{repo}/actions/runs/{run_id}"
         if run_id

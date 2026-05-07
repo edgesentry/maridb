@@ -31,7 +31,7 @@ _ALL_REGIONS = [
     "gulfofmexico", "hornofafrica", "persiangulf", "gulfofaden", "gulfofguinea",
 ]
 _ACTIVE_REGIONS = [
-    "japansea", "singapore", "europe", "blacksea", "middleeast", "gulfofguinea", "hornofafrica",
+    "japansea", "singapore", "europe", "blacksea", "middleeast", "gulfofguinea",
 ]
 _MIN_ACTIVE_REGIONS = 6
 
