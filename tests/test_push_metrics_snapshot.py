@@ -131,6 +131,80 @@ def test_dry_run_includes_all_keys(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Dashboard contract — fields required by dashboard/dashboard.js
+# ---------------------------------------------------------------------------
+
+# These are the fields the maintainer pipeline dashboard reads.
+# If _collect_snapshot stops producing any of these, the dashboard will
+# silently show "—" for that card. This test makes the contract explicit.
+_DASHBOARD_FIELDS: dict[str, type] = {
+    "regions": list,           # Regions Covered card
+    "skipped_regions": list,   # Skipped Regions card
+    "generated_at_utc": str,   # Last Run (data freshness) card
+    "precision_at_50": float,  # Pipeline Status regression gate (may be None if no backtest)
+}
+
+
+def test_collect_snapshot_dashboard_fields_present(tmp_path, monkeypatch):
+    """Snapshot contains all fields required by the maintainer dashboard."""
+    monkeypatch.chdir(tmp_path)
+    processed = tmp_path / "data" / "processed"
+    processed.mkdir(parents=True)
+    summary = {
+        "metrics_summary": {
+            "precision_at_50": {"mean": 0.356},
+            "recall_at_200": {"mean": 1.0},
+            "auroc": {"mean": 0.87},
+        },
+        "total_known_cases": 89,
+        "regions": ["singapore", "japan"],
+        "skipped_regions": [],
+    }
+    (processed / "backtest_public_integration_summary.json").write_text(json.dumps(summary))
+
+    snap = _collect_snapshot("2026-05-06")
+
+    for field, expected_type in _DASHBOARD_FIELDS.items():
+        assert field in snap, f"dashboard field missing from snapshot: {field!r}"
+        if snap[field] is not None:
+            assert isinstance(snap[field], expected_type), (
+                f"dashboard field {field!r}: expected {expected_type.__name__}, "
+                f"got {type(snap[field]).__name__}"
+            )
+
+
+def test_collect_snapshot_dashboard_fields_without_backtest(tmp_path, monkeypatch):
+    """regions and skipped_regions default to [] when no backtest summary exists."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data" / "processed").mkdir(parents=True)
+
+    snap = _collect_snapshot("2026-05-06")
+
+    assert isinstance(snap.get("regions"), list), "regions must default to a list"
+    assert isinstance(snap.get("skipped_regions"), list), "skipped_regions must default to a list"
+    assert isinstance(snap.get("generated_at_utc"), str), "generated_at_utc must always be present"
+
+
+def test_collect_snapshot_skipped_regions_preserved(tmp_path, monkeypatch):
+    """Skipped regions from backtest summary appear in snapshot for dashboard alert."""
+    monkeypatch.chdir(tmp_path)
+    processed = tmp_path / "data" / "processed"
+    processed.mkdir(parents=True)
+    summary = {
+        "metrics_summary": {"precision_at_50": {"mean": 0.30}},
+        "total_known_cases": 50,
+        "regions": ["singapore", "japan"],
+        "skipped_regions": ["middleeast", "blacksea"],
+    }
+    (processed / "backtest_public_integration_summary.json").write_text(json.dumps(summary))
+
+    snap = _collect_snapshot("2026-05-06")
+
+    assert snap["skipped_regions"] == ["middleeast", "blacksea"]
+    assert snap["regions"] == ["singapore", "japan"]
+
+
+# ---------------------------------------------------------------------------
 # boto3 upload helpers
 # ---------------------------------------------------------------------------
 
