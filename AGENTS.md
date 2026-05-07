@@ -8,7 +8,7 @@ Multi-domain OSINT data layer. indago ingests raw signals from maritime, corpora
 |------|------|-------------|
 | [arktrace](https://github.com/edgesentry/arktrace) | Shadow fleet detection | Reads maritime + sanctions features from `arktrace-public` R2 |
 | [documaris](https://github.com/edgesentry/documaris) | Port call documents | Reads voyage and cargo data from `documaris-public` R2 |
-| [clarus](https://github.com/edgesentry/clarus) | Physical port safety monitoring | Reads vessel behavioral features from `maridb-public` R2 |
+| [clarus](https://github.com/edgesentry/clarus) | Profile-switchable safety monitoring | Reads vessel behavioral features from `maridb-public` R2 |
 | [edgesentry-rs](https://github.com/edgesentry/edgesentry-rs) | Audit chain | Audit record format (BLAKE3 + Ed25519) used for signed data outputs |
 
 ## Directory map
