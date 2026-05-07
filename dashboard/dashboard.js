@@ -18,7 +18,7 @@ import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6/+esm"
 // ?local serves from ./metrics/ (for local dev — run dev-serve.sh)
 // ?refresh clears OPFS cache and re-fetches from R2
 const _params = new URLSearchParams(location.search);
-const LOCAL_MODE = _params.get("local") === "1" || _params.get("local") === "true";
+const LOCAL_MODE = _params.has("local") || _params.get("local") === "1" || _params.get("local") === "true";
 const FORCE_REFRESH = _params.has("refresh");
 const R2_BASE = LOCAL_MODE ? "." : "https://pub-e088008b61ee432b906ef710d52af28c.r2.dev";
 const INDEX_URL = `${R2_BASE}/metrics/index.json`;
