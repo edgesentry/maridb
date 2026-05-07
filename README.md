@@ -6,6 +6,8 @@
 
 indago is the shared data foundation for the edgesentry product stack. It collects and transforms raw signals from multiple open-source intelligence domains into structured Parquet datasets distributed via Cloudflare R2.
 
+> **Audience:** This repo is for engineers who maintain indago and its downstream products. The analyst-facing product is **[arktrace.edgesentry.io](https://arktrace.edgesentry.io)** — shadow fleet watchlist, SHAP attribution, vessel detail, and review workflow.
+
 ### Domains
 
 | Domain | Sources | Output |
@@ -38,11 +40,18 @@ All buckets: unauthenticated public read.
 
 See [`docs/ref-r2-buckets.md`](docs/ref-r2-buckets.md) for full partition layout and data flow.
 
+## Pipeline dashboard
+
+`dashboard/` — maintainer ops tool. Shows pipeline health: regression gate pass/fail, region coverage, skipped regions, and data freshness. Served from `maridb-public` R2.
+
+Analyst metrics (Precision@50, Recall, pre-designation lead time, SHAP scores) are displayed at **[arktrace.edgesentry.io](https://arktrace.edgesentry.io)**.
+
 ## Repository layout
 
 ```
 indago/
   .agents/skills/      # agent skills (npx skills add edgesentry/indago)
+  dashboard/           # maintainer pipeline ops dashboard
   docs/                # reference material (ref-*.md)
   pipelines/           # ingest and transformation pipeline implementations
   scripts/             # one-off upload and maintenance scripts

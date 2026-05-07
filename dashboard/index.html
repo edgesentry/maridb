@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>indago — Metrics Dashboard</title>
+  <title>indago — Pipeline Dashboard</title>
   <script type="module" src="dashboard.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -20,13 +20,25 @@
       display: flex;
       align-items: baseline;
       gap: 1rem;
-      margin-bottom: 2rem;
+      margin-bottom: 1rem;
       border-bottom: 1px solid #21262d;
       padding-bottom: 1rem;
     }
 
     header h1 { font-size: 1.2rem; font-weight: 600; color: #e6edf3; }
     header span { font-size: 0.8rem; color: #8b949e; }
+
+    .analyst-link {
+      font-size: 0.75rem;
+      color: #8b949e;
+      margin-bottom: 1.5rem;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      display: inline-block;
+    }
+    .analyst-link a { color: #58a6ff; text-decoration: none; }
+    .analyst-link a:hover { text-decoration: underline; }
 
     #status {
       font-size: 0.75rem;
@@ -38,7 +50,7 @@
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
       gap: 1.5rem;
       margin-bottom: 2rem;
     }
@@ -65,6 +77,9 @@
       color: #e6edf3;
       letter-spacing: -0.02em;
     }
+    .metric-value.good { color: #3fb950; }
+    .metric-value.bad  { color: #f85149; }
+    .metric-value.warn { color: #d29922; }
 
     .metric-sub {
       font-size: 0.75rem;
@@ -115,58 +130,60 @@
 </head>
 <body>
   <header>
-    <h1>indago — Metrics Dashboard</h1>
-    <span>Last 7 days · R2 + OPFS · zero cloud compute</span>
+    <h1>indago — Pipeline Dashboard</h1>
+    <span>Maintainer ops · pipeline health · R2 data freshness</span>
   </header>
+
+  <div class="analyst-link">
+    Analyst product: <a href="https://arktrace.edgesentry.io" target="_blank">arktrace.edgesentry.io</a>
+    — watchlist, SHAP scores, vessel detail, review workflow
+  </div>
 
   <div id="status">Loading…</div>
 
   <div class="grid">
     <div class="card">
-      <h2>Precision @ 50</h2>
-      <div class="metric-value" id="val-p50">—</div>
-      <div class="metric-sub" id="sub-p50">gate ≥ 0.60 · ceiling 0.95</div>
-      <div class="chart-container" id="chart-p50"></div>
+      <h2>Pipeline Status</h2>
+      <div class="metric-value" id="val-gate">—</div>
+      <div class="metric-sub" id="sub-gate">regression gate · P@50 ≥ 0.25</div>
+      <div class="chart-container" id="chart-gate"></div>
     </div>
 
     <div class="card">
-      <h2>Recall @ 200</h2>
-      <div class="metric-value" id="val-recall">—</div>
-      <div class="metric-sub">all known positives reachable in top 200</div>
-      <div class="chart-container" id="chart-recall"></div>
+      <h2>Regions Covered</h2>
+      <div class="metric-value" id="val-regions">—</div>
+      <div class="metric-sub" id="sub-regions">active regions</div>
+      <div class="chart-container" id="chart-regions"></div>
     </div>
 
     <div class="card">
-      <h2>Pre-designation Lead Time</h2>
-      <div class="metric-value" id="val-lead">—</div>
-      <div class="metric-sub" id="sub-lead">days · 60–90 day target</div>
-      <div class="chart-container" id="chart-lead"></div>
+      <h2>Skipped Regions</h2>
+      <div class="metric-value" id="val-skipped">—</div>
+      <div class="metric-sub" id="sub-skipped">0 = all regions healthy</div>
+      <div class="chart-container" id="chart-skipped"></div>
     </div>
 
     <div class="card">
-      <h2>Unknown-Unknown Watch</h2>
-      <div class="metric-value" id="val-uu">—</div>
-      <div class="metric-sub">candidates with no current sanctions link</div>
-      <div class="chart-container" id="chart-uu"></div>
+      <h2>Last Run</h2>
+      <div class="metric-value" id="val-freshness">—</div>
+      <div class="metric-sub" id="sub-freshness">hours since pipeline completed</div>
     </div>
   </div>
 
   <div class="card" style="margin-bottom: 1.5rem;">
-    <h2>Daily Snapshot History</h2>
+    <h2>Daily Run History</h2>
     <table id="history-table">
       <thead>
         <tr>
           <th>Date</th>
-          <th>P@50</th>
-          <th>Recall@200</th>
-          <th>Lead days (median)</th>
-          <th>UU candidates</th>
-          <th>Known positives</th>
-          <th>Source</th>
+          <th>Status</th>
+          <th>Regions</th>
+          <th>Skipped</th>
+          <th>Generated (UTC)</th>
         </tr>
       </thead>
       <tbody id="history-body">
-        <tr><td colspan="7" style="color:#484f58">Loading…</td></tr>
+        <tr><td colspan="5" style="color:#484f58">Loading…</td></tr>
       </tbody>
     </table>
   </div>

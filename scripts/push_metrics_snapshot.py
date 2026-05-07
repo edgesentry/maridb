@@ -88,6 +88,8 @@ def _collect_snapshot(date_str: str) -> dict:
         snap.setdefault("auroc", val.get("auroc"))
 
     snap["generated_at_utc"] = datetime.now(UTC).isoformat()
+    snap.setdefault("regions", [])
+    snap.setdefault("skipped_regions", [])
     return snap
 
 
