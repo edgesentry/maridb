@@ -1,11 +1,16 @@
 /**
- * indago metrics dashboard
+ * indago pipeline dashboard — maintainer ops tool
+ *
+ * Shows pipeline health: regression gate pass/fail, region coverage,
+ * skipped regions, and data freshness.
+ *
+ * Analyst metrics (P@50, Recall, lead days, SHAP) live at arktrace.edgesentry.io.
  *
  * Data flow:
  *   1. Fetch metrics/index.json from R2
  *   2. For each entry: check OPFS cache (< 24h) → else fetch from R2
- *   3. Render time-series charts with Observable Plot (CDN)
- *   4. Render summary table
+ *   3. Render pipeline status charts with Observable Plot (CDN)
+ *   4. Render run history table
  */
 
 import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6/+esm";
@@ -18,6 +23,8 @@ const FORCE_REFRESH = _params.has("refresh");
 const R2_BASE = LOCAL_MODE ? "." : "https://pub-e088008b61ee432b906ef710d52af28c.r2.dev";
 const INDEX_URL = `${R2_BASE}/metrics/index.json`;
 const OPFS_CACHE_TTL_MS = LOCAL_MODE ? 0 : 24 * 60 * 60 * 1000;
+
+const GATE_THRESHOLD = 0.25;
 
 // ---------------------------------------------------------------------------
 // OPFS helpers
@@ -48,10 +55,6 @@ async function opfsSet(key, data) {
   } catch (_) { /* best-effort */ }
 }
 
-// ---------------------------------------------------------------------------
-// Fetch with OPFS cache
-// ---------------------------------------------------------------------------
-
 async function fetchWithCache(url, cacheKey) {
   const cached = await opfsGet(cacheKey);
   if (cached) return cached;
@@ -66,7 +69,7 @@ async function fetchWithCache(url, cacheKey) {
 // Chart helpers
 // ---------------------------------------------------------------------------
 
-function sparkline(snapshots, field, { color = "#3fb950", label = field, fmt = (v) => v.toFixed(3) } = {}) {
+function sparkline(snapshots, field, { color = "#3fb950", fmt = (v) => String(v) } = {}) {
   const data = snapshots
     .filter((s) => s[field] != null)
     .map((s) => ({ date: new Date(s.date), value: +s[field] }));
@@ -74,9 +77,9 @@ function sparkline(snapshots, field, { color = "#3fb950", label = field, fmt = (
   if (data.length === 0) return null;
 
   return Plot.plot({
-    width: 320,
+    width: 300,
     height: 100,
-    marginLeft: 40,
+    marginLeft: 32,
     marginRight: 8,
     marginTop: 8,
     marginBottom: 24,
@@ -100,40 +103,16 @@ function setStatus(msg, isError = false) {
   el.className = isError ? "error" : "";
 }
 
-function setMetric(id, value, fmt = (v) => v) {
+function setMetric(id, text, colorCls = "") {
   const el = document.getElementById(id);
-  if (el) el.textContent = value != null ? fmt(value) : "—";
+  if (!el) return;
+  el.textContent = text ?? "—";
+  el.className = ["metric-value", colorCls].filter(Boolean).join(" ");
 }
 
-function colorClass(value, { floor, ceiling } = {}) {
-  if (value == null) return "";
-  if (floor != null && value < floor) return "bad";
-  if (ceiling != null && value > ceiling) return "warn";
-  return "good";
-}
-
-function renderTable(snapshots) {
-  const tbody = document.getElementById("history-body");
-  tbody.innerHTML = "";
-  for (const s of snapshots) {
-    const p50 = s.precision_at_50;
-    const recall = s.recall_at_200;
-    const lead = s.median_lead_days;
-    const uu = s.unknown_unknown_candidates;
-    const known = s.known_positives;
-
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${s.date}</td>
-      <td class="${colorClass(p50, { floor: 0.25, ceiling: 0.95 })}">${p50 != null ? p50.toFixed(4) : "—"}</td>
-      <td class="${colorClass(recall, { floor: 0.5 })}">${recall != null ? recall.toFixed(4) : "—"}</td>
-      <td>${lead != null ? lead + "d" : "—"}</td>
-      <td>${uu != null ? uu : "—"}</td>
-      <td>${known != null ? known : "—"}</td>
-      <td style="color:#484f58;font-size:0.7rem">${(s.regions || []).join(", ") || "—"}</td>
-    `;
-    tbody.appendChild(row);
-  }
+function setSub(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text ?? "";
 }
 
 function mountChart(containerId, chart) {
@@ -141,6 +120,32 @@ function mountChart(containerId, chart) {
   if (!el || !chart) return;
   el.innerHTML = "";
   el.appendChild(chart);
+}
+
+function gatePass(snap) {
+  return snap.precision_at_50 != null && snap.precision_at_50 >= GATE_THRESHOLD;
+}
+
+function renderTable(snapshots) {
+  const tbody = document.getElementById("history-body");
+  tbody.innerHTML = "";
+  for (const s of snapshots) {
+    const pass = gatePass(s);
+    const regions = (s.regions || []).join(", ") || "—";
+    const skipped = (s.skipped_regions || []);
+    const skippedText = skipped.length > 0 ? skipped.join(", ") : "none";
+    const genTime = s.generated_at_utc?.slice(0, 16).replace("T", " ") ?? "—";
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${s.date}</td>
+      <td class="${pass ? "good" : "bad"}">${pass ? "PASS" : "FAIL"}</td>
+      <td>${regions}</td>
+      <td class="${skipped.length > 0 ? "bad" : "good"}">${skippedText}</td>
+      <td style="color:#484f58;font-size:0.7rem">${genTime} UTC</td>
+    `;
+    tbody.appendChild(row);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -182,43 +187,54 @@ async function main() {
     return;
   }
 
-  // Sort oldest-first for charts
   snapshots.sort((a, b) => a.date.localeCompare(b.date));
   const latest = snapshots.at(-1);
 
-  // Latest metric values
-  setMetric("val-p50", latest.precision_at_50, (v) => v.toFixed(4));
-  if (latest.precision_at_50_ci_low != null && latest.precision_at_50_ci_high != null) {
-    document.getElementById("sub-p50").textContent =
-      `CI 95%: ${latest.precision_at_50_ci_low.toFixed(3)}–${latest.precision_at_50_ci_high.toFixed(3)} · gate ≥ 0.60`;
-  }
-  setMetric("val-recall", latest.recall_at_200, (v) => v.toFixed(4));
-  setMetric("val-lead", latest.median_lead_days, (v) => `${v}d`);
-  if (latest.pre_designation_count != null) {
-    document.getElementById("sub-lead").textContent =
-      `median · ${latest.pre_designation_count} vessel(s) detected pre-designation`;
-  }
-  setMetric("val-uu", latest.unknown_unknown_candidates);
+  // Pipeline status (regression gate)
+  const pass = gatePass(latest);
+  setMetric("val-gate", pass ? "PASS" : "FAIL", pass ? "good" : "bad");
+  setSub("sub-gate", `regression gate · P@50 ≥ ${GATE_THRESHOLD} · latest: ${latest.precision_at_50?.toFixed(4) ?? "—"}`);
 
-  // Charts
-  mountChart("chart-p50", sparkline(snapshots, "precision_at_50", {
-    color: latest.precision_at_50 >= 0.25 ? "#3fb950" : "#f85149",
+  // Regression gate history as 0/1 sparkline
+  mountChart("chart-gate", sparkline(snapshots, "precision_at_50", {
+    color: pass ? "#3fb950" : "#f85149",
     fmt: (v) => v.toFixed(2),
   }));
-  mountChart("chart-recall", sparkline(snapshots, "recall_at_200", {
-    color: "#58a6ff",
-    fmt: (v) => v.toFixed(2),
-  }));
-  mountChart("chart-lead", sparkline(snapshots, "median_lead_days", {
-    color: "#d2a679",
-    fmt: (v) => `${v}d`,
-  }));
-  mountChart("chart-uu", sparkline(snapshots, "unknown_unknown_candidates", {
-    color: "#bc8cff",
-    fmt: (v) => String(Math.round(v)),
-  }));
 
-  // Table (newest first)
+  // Regions covered
+  const regionCount = (latest.regions || []).length;
+  const totalKnown = 5;
+  const regionColor = regionCount >= totalKnown ? "good" : regionCount > 0 ? "warn" : "bad";
+  setMetric("val-regions", `${regionCount}/${totalKnown}`, regionColor);
+  setSub("sub-regions", (latest.regions || []).join(" · ") || "no regions");
+
+  mountChart("chart-regions", sparkline(
+    snapshots.map((s) => ({ ...s, region_count: (s.regions || []).length })),
+    "region_count",
+    { color: "#58a6ff", fmt: (v) => String(Math.round(v)) },
+  ));
+
+  // Skipped regions
+  const skipped = latest.skipped_regions || [];
+  const skippedColor = skipped.length === 0 ? "good" : "bad";
+  setMetric("val-skipped", String(skipped.length), skippedColor);
+  setSub("sub-skipped", skipped.length > 0 ? `skipped: ${skipped.join(", ")}` : "all regions healthy");
+
+  mountChart("chart-skipped", sparkline(
+    snapshots.map((s) => ({ ...s, skipped_count: (s.skipped_regions || []).length })),
+    "skipped_count",
+    { color: "#f85149", fmt: (v) => String(Math.round(v)) },
+  ));
+
+  // Data freshness
+  if (latest.generated_at_utc) {
+    const genMs = new Date(latest.generated_at_utc).getTime();
+    const hoursAgo = Math.round((Date.now() - genMs) / 3_600_000);
+    const freshnessColor = hoursAgo <= 26 ? "good" : hoursAgo <= 48 ? "warn" : "bad";
+    setMetric("val-freshness", `${hoursAgo}h`, freshnessColor);
+    setSub("sub-freshness", `last run: ${latest.generated_at_utc.slice(0, 16).replace("T", " ")} UTC`);
+  }
+
   renderTable([...snapshots].reverse());
 
   const cached = await navigator.storage.estimate();
